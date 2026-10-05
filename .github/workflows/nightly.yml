@@ -1,8 +1,6 @@
 name: Nightly
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
   schedule:
     - cron: "0 15 * * *"
@@ -34,9 +32,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: nightly-${{ matrix.target }}
       - name: Install cross (aarch64-linux only)
         if: matrix.use-cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --version 0.2.5 --locked
       - name: Show runner arch
         run: uname -m && rustc -vV
       - name: Build (native)
