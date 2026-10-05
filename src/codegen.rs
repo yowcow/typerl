@@ -103,26 +103,44 @@ impl Gen<'_> {
             }
             Type::Object(c) => {
                 self.imp("InstanceOf");
-                Ok(format!("(InstanceOf[\"{c}\"])->where(sub {{ ref($_) eq \"{c}\" }})"))
+                Ok(format!(
+                    "(InstanceOf[\"{c}\"])->where(sub {{ ref($_) eq \"{c}\" }})"
+                ))
             }
-            Type::Void | Type::Class => Err(Diag::new(self.path, span, "internal error: unexpected Void/Class type")),
+            Type::Void | Type::Class => Err(Diag::new(
+                self.path,
+                span,
+                "internal error: unexpected Void/Class type",
+            )),
         }
     }
 
     /// `tt` wrapped so a following `->assert_*` applies to the whole type.
     fn check_target(&mut self, t: &Type, span: Span) -> Result<String, Diag> {
         let s = self.tt(t, span)?;
-        Ok(if matches!(t, Type::ArrayRef(_) | Type::HashRef(_) | Type::Optional(_)) {
-            format!("({s})")
-        } else {
-            s
-        })
+        Ok(
+            if matches!(t, Type::ArrayRef(_) | Type::HashRef(_) | Type::Optional(_)) {
+                format!("({s})")
+            } else {
+                s
+            },
+        )
     }
 
     fn sub(&mut self, s: &Sub) -> Result<(), Diag> {
-        self.named = s.params.iter().filter(|p| p.named).map(|p| p.name.clone()).collect();
+        self.named = s
+            .params
+            .iter()
+            .filter(|p| p.named)
+            .map(|p| p.name.clone())
+            .collect();
         self.line(0, format!("sub {} {{", s.name));
-        let mut vars: Vec<String> = s.params.iter().filter(|p| !p.named).map(|p| format!("${}", p.name)).collect();
+        let mut vars: Vec<String> = s
+            .params
+            .iter()
+            .filter(|p| !p.named)
+            .map(|p| format!("${}", p.name))
+            .collect();
         if !self.named.is_empty() {
             vars.push("%args".into());
         }
@@ -157,7 +175,12 @@ impl Gen<'_> {
 
     fn stmt(&mut self, st: &Stmt, d: usize) -> Result<(), Diag> {
         match st {
-            Stmt::My { ty, name, init, span } => {
+            Stmt::My {
+                ty,
+                name,
+                init,
+                span,
+            } => {
                 let mut v = self.expr(init)?;
                 if self.facts.narrow.contains(span) {
                     v = format!("{}->assert_return({v})", self.check_target(ty, *span)?);
@@ -167,7 +190,11 @@ impl Gen<'_> {
             Stmt::If { arms, els } => {
                 for (i, (c, b)) in arms.iter().enumerate() {
                     let c = self.expr(c)?;
-                    let head = if i == 0 { format!("if ({c}) {{") } else { format!("}} elsif ({c}) {{") };
+                    let head = if i == 0 {
+                        format!("if ({c}) {{")
+                    } else {
+                        format!("}} elsif ({c}) {{")
+                    };
                     self.line(d, head);
                     self.block(b, d + 1)?;
                 }
@@ -177,7 +204,9 @@ impl Gen<'_> {
                 }
                 self.line(d, "}".into());
             }
-            Stmt::Foreach { var, list, body, .. } => {
+            Stmt::Foreach {
+                var, list, body, ..
+            } => {
                 let l = self.expr(list)?;
                 self.line(d, format!("foreach my ${var} (@{{{l}}}) {{"));
                 self.block(body, d + 1)?;
@@ -242,7 +271,9 @@ impl Gen<'_> {
     fn operand(&mut self, e: &Expr, parent: u8, right: bool) -> Result<String, Diag> {
         let s = self.expr(e)?;
         Ok(match &e.kind {
-            ExprKind::Binary(op, ..) if op.prec() < parent || (right && op.prec() == parent) => format!("({s})"),
+            ExprKind::Binary(op, ..) if op.prec() < parent || (right && op.prec() == parent) => {
+                format!("({s})")
+            }
             _ => s,
         })
     }
@@ -288,7 +319,11 @@ impl Gen<'_> {
                     None => Ok(format!("{name}({a})")),
                 }
             }
-            ExprKind::ClassCall { class, method, args } => {
+            ExprKind::ClassCall {
+                class,
+                method,
+                args,
+            } => {
                 let a = self.args(args)?;
                 Ok(format!("{class}->{method}({a})"))
             }

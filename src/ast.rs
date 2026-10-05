@@ -96,11 +96,30 @@ pub struct Param {
 
 #[derive(Debug)]
 pub enum Stmt {
-    My { ty: Type, name: String, init: Expr, span: Span },
-    If { arms: Vec<(Expr, Vec<Stmt>)>, els: Option<Vec<Stmt>> },
-    Foreach { ty: Type, var: String, list: Expr, body: Vec<Stmt>, span: Span },
-    Return { value: Option<Expr>, span: Span },
-    Die { msg: Expr },
+    My {
+        ty: Type,
+        name: String,
+        init: Expr,
+        span: Span,
+    },
+    If {
+        arms: Vec<(Expr, Vec<Stmt>)>,
+        els: Option<Vec<Stmt>>,
+    },
+    Foreach {
+        ty: Type,
+        var: String,
+        list: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    Return {
+        value: Option<Expr>,
+        span: Span,
+    },
+    Die {
+        msg: Expr,
+    },
     Expr(Expr),
 }
 
@@ -121,15 +140,32 @@ pub enum ExprKind {
     Neg(Box<Expr>),
     Binary(BinOp, Box<Expr>, Box<Expr>),
     /// `f(...)`, `Pkg::f(...)`, `to_int(...)`/`to_str(...)`/`to_bool(...)`.
-    Call { name: String, args: Args },
+    Call {
+        name: String,
+        args: Args,
+    },
     /// `Pkg->m(...)`
-    ClassCall { class: String, method: String, args: Args },
+    ClassCall {
+        class: String,
+        method: String,
+        args: Args,
+    },
     /// `$e->m(...)` / `$e->m`
-    MethodCall { recv: Box<Expr>, method: String, args: Args },
+    MethodCall {
+        recv: Box<Expr>,
+        method: String,
+        args: Args,
+    },
     /// `$e->{name}`
-    Field { recv: Box<Expr>, name: String },
+    Field {
+        recv: Box<Expr>,
+        name: String,
+    },
     /// `bless({ ... }, target)`
-    Bless { fields: Vec<Pair>, target: Box<Expr> },
+    Bless {
+        fields: Vec<Pair>,
+        target: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -87,7 +87,10 @@ pub fn read_output(out: &Out, target: &str) -> String {
 pub fn assert_ok(out: &Out) {
     assert_eq!(out.code, 0, "expected success; stderr:\n{}", out.stderr);
     for t in &out.targets {
-        assert!(out.dir.join(output_path(t)).exists(), "missing output for {t}");
+        assert!(
+            out.dir.join(output_path(t)).exists(),
+            "missing output for {t}"
+        );
     }
 }
 
@@ -107,12 +110,17 @@ pub fn assert_err(out: &Out, prefix: &str, needle: &str) {
         assert!(is_diag(l), "not a `file:line:col: error: msg` line: {l:?}");
     }
     assert!(
-        out.stderr.lines().any(|l| l.starts_with(prefix) && l.contains(needle)),
+        out.stderr
+            .lines()
+            .any(|l| l.starts_with(prefix) && l.contains(needle)),
         "no diagnostic starting with {prefix:?} containing {needle:?}; stderr:\n{}",
         out.stderr
     );
     for t in &out.targets {
-        assert!(!out.dir.join(output_path(t)).exists(), "output for {t} must not be written on failure");
+        assert!(
+            !out.dir.join(output_path(t)).exists(),
+            "output for {t} must not be written on failure"
+        );
     }
 }
 
@@ -140,13 +148,23 @@ fn copy_dir(from: &Path, to: &Path) {
 /// Copies tests/fixtures/<name> into a fresh dir.
 pub fn fixture(name: &str) -> PathBuf {
     let dir = tmpdir();
-    copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name), &dir);
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name),
+        &dir,
+    );
     dir
 }
 
 /// Runs `perl -I. <script>` in `dir`.
 pub fn perl(dir: &Path, script: &str) -> Out {
-    let o = Command::new("perl").arg("-I.").arg(script).current_dir(dir).output().expect("run perl");
+    let o = Command::new("perl")
+        .arg("-I.")
+        .arg(script)
+        .current_dir(dir)
+        .output()
+        .expect("run perl");
     out_of(o, dir, vec![])
 }
 

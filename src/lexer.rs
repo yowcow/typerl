@@ -17,11 +17,13 @@ pub struct Token {
     pub span: Span,
 }
 
-const PUNCT: &[&str] = &["->", "=>", "==", "(", ")", "[", "]", "{", "}", ",", ";", ":", "+", "-", "*", ".", "=", "|"];
+const PUNCT: &[&str] = &[
+    "->", "=>", "==", "(", ")", "[", "]", "{", "}", ",", ";", ":", "+", "-", "*", ".", "=", "|",
+];
 const BAD_OPS: &[&str] = &[
-    "<=>", "**=", "||=", "&&=", "//=", "...", "<<", ">>", "**", "++", "--", "+=", "-=", "*=", "/=", ".=", "%=",
-    "|=", "&=", "^=", "||", "&&", "//", "..", "!=", "<=", ">=", "=~", "!~", "~~", "<", ">", "!", "~", "^", "?",
-    "/", "%", "&",
+    "<=>", "**=", "||=", "&&=", "//=", "...", "<<", ">>", "**", "++", "--", "+=", "-=", "*=", "/=",
+    ".=", "%=", "|=", "&=", "^=", "||", "&&", "//", "..", "!=", "<=", ">=", "=~", "!~", "~~", "<",
+    ">", "!", "~", "^", "?", "/", "%", "&",
 ];
 const INTERP_MSG: &str = "only simple `$name` interpolation of Str variables is supported";
 
@@ -42,7 +44,13 @@ struct Lexer<'a> {
 }
 
 pub fn lex(file: &str, src: &str) -> Result<Vec<Token>, Diag> {
-    let mut lx = Lexer { file, chars: src.chars().collect(), pos: 0, line: 1, col: 1 };
+    let mut lx = Lexer {
+        file,
+        chars: src.chars().collect(),
+        pos: 0,
+        line: 1,
+        col: 1,
+    };
     let mut toks = Vec::new();
     while let Some(c) = lx.peek(0) {
         let span = lx.span();
@@ -60,7 +68,9 @@ pub fn lex(file: &str, src: &str) -> Result<Vec<Token>, Diag> {
         if c == '=' && at_line_start && lx.peek(1).is_some_and(|n| n.is_ascii_alphabetic()) {
             return lx.err(span, "POD is not supported");
         }
-        let sigil_next = lx.peek(1).is_some_and(|n| is_ident_start(n) || n == '$' || n == '{');
+        let sigil_next = lx
+            .peek(1)
+            .is_some_and(|n| is_ident_start(n) || n == '$' || n == '{');
         let tok = if is_ident_start(c) {
             lx.ident()?
         } else if c.is_ascii_digit() {
@@ -86,7 +96,10 @@ pub fn lex(file: &str, src: &str) -> Result<Vec<Token>, Diag> {
         };
         toks.push(Token { tok, span });
     }
-    toks.push(Token { tok: Tok::Eof, span: lx.span() });
+    toks.push(Token {
+        tok: Tok::Eof,
+        span: lx.span(),
+    });
     Ok(toks)
 }
 
@@ -108,7 +121,10 @@ impl Lexer<'_> {
     }
 
     fn span(&self) -> Span {
-        Span { line: self.line, col: self.col }
+        Span {
+            line: self.line,
+            col: self.col,
+        }
     }
 
     fn err<T>(&self, span: Span, msg: impl Into<String>) -> Result<T, Diag> {
@@ -155,7 +171,10 @@ impl Lexer<'_> {
             return self.err(span, "invalid number literal");
         }
         if s.len() > 1 && s.starts_with('0') {
-            return self.err(span, "leading zeros are not supported (Perl reads them as octal)");
+            return self.err(
+                span,
+                "leading zeros are not supported (Perl reads them as octal)",
+            );
         }
         Ok(Tok::Int(s))
     }
@@ -164,7 +183,12 @@ impl Lexer<'_> {
         let span = self.span();
         self.bump(); // $
         match self.peek(0) {
-            Some('$') | Some('{') => return self.err(span, "symbolic references and dereferencing are not supported"),
+            Some('$') | Some('{') => {
+                return self.err(
+                    span,
+                    "symbolic references and dereferencing are not supported",
+                )
+            }
             Some(c) if is_ident_start(c) => {}
             _ => return self.err(span, "special variables are not supported"),
         }
@@ -221,7 +245,12 @@ impl Lexer<'_> {
                     Some(c) => return self.err(here, format!("unsupported escape `\\{c}`")),
                     None => return self.err(span, "unterminated string"),
                 },
-                Some('@') => return self.err(here, "`@` must be escaped as `\\@` in double-quoted strings"),
+                Some('@') => {
+                    return self.err(
+                        here,
+                        "`@` must be escaped as `\\@` in double-quoted strings",
+                    )
+                }
                 Some('$') => {
                     if self.peek(0) == Some('{') {
                         return self.err(here, INTERP_MSG);
@@ -270,7 +299,10 @@ impl Lexer<'_> {
                 return Ok(Tok::Punct(p));
             }
         }
-        self.err(span, format!("unexpected character `{}`", self.peek(0).unwrap()))
+        self.err(
+            span,
+            format!("unexpected character `{}`", self.peek(0).unwrap()),
+        )
     }
 }
 
@@ -289,7 +321,10 @@ mod tests {
     #[test]
     fn lexes_tokens_with_spans() {
         let t = lex("t", "my Int $x = 1;\n  foo").unwrap();
-        let got: Vec<(Tok, u32, u32)> = t.into_iter().map(|t| (t.tok, t.span.line, t.span.col)).collect();
+        let got: Vec<(Tok, u32, u32)> = t
+            .into_iter()
+            .map(|t| (t.tok, t.span.line, t.span.col))
+            .collect();
         assert_eq!(
             got,
             vec![
@@ -325,7 +360,10 @@ mod tests {
 
     #[test]
     fn lexes_strings() {
-        assert_eq!(toks("'it\\'s'"), vec![Tok::Str(StrLit::Single("'it\\'s'".into())), Tok::Eof]);
+        assert_eq!(
+            toks("'it\\'s'"),
+            vec![Tok::Str(StrLit::Single("'it\\'s'".into())), Tok::Eof]
+        );
         assert_eq!(
             toks("\"hi $name!\\n\""),
             vec![
@@ -341,13 +379,21 @@ mod tests {
 
     #[test]
     fn skips_comments() {
-        assert_eq!(toks("1 # two\n3"), vec![Tok::Int("1".into()), Tok::Int("3".into()), Tok::Eof]);
+        assert_eq!(
+            toks("1 # two\n3"),
+            vec![Tok::Int("1".into()), Tok::Int("3".into()), Tok::Eof]
+        );
     }
 
     #[test]
     fn rejects_unsupported_operators() {
-        for op in ["<", "!=", "++", "+=", "**", "&&", "||", "//", "..", "=~", "<=>", "?", "%", "/"] {
-            assert_eq!(err(&format!("1 {op} 2")), format!("operator `{op}` is not supported"));
+        for op in [
+            "<", "!=", "++", "+=", "**", "&&", "||", "//", "..", "=~", "<=>", "?", "%", "/",
+        ] {
+            assert_eq!(
+                err(&format!("1 {op} 2")),
+                format!("operator `{op}` is not supported")
+            );
         }
     }
 
@@ -375,8 +421,20 @@ mod tests {
 
     #[test]
     fn rejects_complex_interpolation() {
-        for s in ["\"${x}\"", "\"$x->{a}\"", "\"$x->[0]\"", "\"$x[0]\"", "\"$x{a}\"", "\"$x::y\"", "\"$x's\""] {
-            assert_eq!(err(s), "only simple `$name` interpolation of Str variables is supported", "{s}");
+        for s in [
+            "\"${x}\"",
+            "\"$x->{a}\"",
+            "\"$x->[0]\"",
+            "\"$x[0]\"",
+            "\"$x{a}\"",
+            "\"$x::y\"",
+            "\"$x's\"",
+        ] {
+            assert_eq!(
+                err(s),
+                "only simple `$name` interpolation of Str variables is supported",
+                "{s}"
+            );
         }
         assert!(err("\"@x\"").starts_with("`@` must be escaped"));
         assert!(err("\"$5\"").starts_with("a literal `$`"));

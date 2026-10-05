@@ -23,12 +23,20 @@ impl Diag {
     }
 
     pub fn new(file: &str, span: Span, msg: impl Into<String>) -> Diag {
-        Diag { file: file.to_string(), span, msg: msg.into() }
+        Diag {
+            file: file.to_string(),
+            span,
+            msg: msg.into(),
+        }
     }
 }
 
 impl fmt::Display for Diag {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}:{}: error: {}", self.file, self.span.line, self.span.col, self.msg)
+        write!(
+            f,
+            "{}:{}:{}: error: {}",
+            self.file, self.span.line, self.span.col, self.msg
+        )
     }
 }

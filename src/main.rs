@@ -26,7 +26,10 @@ fn main() -> ExitCode {
     // Suppress the default panic hook so a compiler panic never leaks a Rust
     // backtrace; it becomes a diagnostic with exit 1 like every other failure.
     std::panic::set_hook(Box::new(|_| {}));
-    match std::thread::Builder::new().stack_size(STACK_SIZE).spawn(run) {
+    match std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+    {
         Ok(handle) => match handle.join() {
             Ok(c) => c,
             Err(_) => {
@@ -35,7 +38,10 @@ fn main() -> ExitCode {
             }
         },
         Err(e) => {
-            eprintln!("typerl:1:1: error: cannot start the compiler thread ({} MiB stack): {e}", STACK_SIZE >> 20);
+            eprintln!(
+                "typerl:1:1: error: cannot start the compiler thread ({} MiB stack): {e}",
+                STACK_SIZE >> 20
+            );
             ExitCode::from(1)
         }
     }
@@ -79,7 +85,11 @@ fn compile(path: &str) -> Result<(PathBuf, String, FileKind), Diag> {
     let src = std::fs::read_to_string(path).map_err(|e| Diag::cannot_read(path, e))?;
     let file = parser::parse(path, &src, kind)?;
     let facts = checker::check(&file, path)?;
-    Ok((Path::new(path).with_extension(ext), codegen::generate(&file, &facts, path)?, kind))
+    Ok((
+        Path::new(path).with_extension(ext),
+        codegen::generate(&file, &facts, path)?,
+        kind,
+    ))
 }
 
 fn write_output(out: &Path, text: &str, kind: FileKind) -> std::io::Result<()> {
