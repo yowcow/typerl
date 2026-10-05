@@ -183,7 +183,8 @@ fn stmt_span(s: &Stmt) -> Option<Span> {
     }
 }
 
-fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> Result<SubSig, (Span, String)> {    if RESERVED.contains(&s.name.as_str()) {
+fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> Result<SubSig, (Span, String)> {
+    if RESERVED.contains(&s.name.as_str()) {
         return Err((s.span, format!("`{}` is a reserved name", s.name)));
     }
     let mut params = s.params.clone();
