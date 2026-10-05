@@ -18,6 +18,10 @@ pub struct Diag {
 }
 
 impl Diag {
+    pub fn cannot_read(file: &str, why: impl fmt::Display) -> Diag {
+        Diag::new(file, Span::START, format!("cannot read file: {why}"))
+    }
+
     pub fn new(file: &str, span: Span, msg: impl Into<String>) -> Diag {
         Diag { file: file.to_string(), span, msg: msg.into() }
     }

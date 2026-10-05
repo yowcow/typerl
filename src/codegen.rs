@@ -124,19 +124,23 @@ impl Gen<'_> {
                 if matches!(p.ty, Type::Any | Type::Class) {
                     continue;
                 }
-                let v = if p.named { format!("$args{{{}}}", p.name) } else { format!("${}", p.name) };
+                let v = self.var(&p.name);
                 let t = self.check_target(&p.ty);
                 self.line(1, format!("{t}->assert_valid({v});"));
             }
         }
-        for st in &s.body {
-            self.stmt(st, 1);
-        }
+        self.block(&s.body, 1);
         if s.ret == Type::Void && !terminates(&s.body) {
             self.line(1, "return;".into());
         }
         self.line(0, "}".into());
         self.named.clear();
+    }
+
+    fn block(&mut self, stmts: &[Stmt], d: usize) {
+        for s in stmts {
+            self.stmt(s, d);
+        }
     }
 
     fn stmt(&mut self, st: &Stmt, d: usize) {
@@ -148,29 +152,23 @@ impl Gen<'_> {
                 }
                 self.line(d, format!("my ${name} = {v};"));
             }
-            Stmt::If { arms, els, .. } => {
+            Stmt::If { arms, els } => {
                 for (i, (c, b)) in arms.iter().enumerate() {
                     let c = self.expr(c);
                     let head = if i == 0 { format!("if ({c}) {{") } else { format!("}} elsif ({c}) {{") };
                     self.line(d, head);
-                    for s in b {
-                        self.stmt(s, d + 1);
-                    }
+                    self.block(b, d + 1);
                 }
                 if let Some(b) = els {
                     self.line(d, "} else {".into());
-                    for s in b {
-                        self.stmt(s, d + 1);
-                    }
+                    self.block(b, d + 1);
                 }
                 self.line(d, "}".into());
             }
             Stmt::Foreach { var, list, body, .. } => {
                 let l = self.expr(list);
                 self.line(d, format!("foreach my ${var} (@{{{l}}}) {{"));
-                for s in body {
-                    self.stmt(s, d + 1);
-                }
+                self.block(body, d + 1);
                 self.line(d, "}".into());
             }
             Stmt::Return { value: Some(v), .. } => {
@@ -178,7 +176,7 @@ impl Gen<'_> {
                 self.line(d, format!("return {v};"));
             }
             Stmt::Return { value: None, .. } => self.line(d, "return;".into()),
-            Stmt::Die { msg, .. } => {
+            Stmt::Die { msg } => {
                 let m = self.expr(msg);
                 self.line(d, format!("die {m};"));
             }
@@ -201,6 +199,10 @@ impl Gen<'_> {
         pairs.iter().map(|p| format!("{} => {}", p.key, self.expr(&p.value))).collect::<Vec<_>>().join(", ")
     }
 
+    fn exprs(&mut self, items: &[Expr]) -> String {
+        items.iter().map(|e| self.expr(e)).collect::<Vec<_>>().join(", ")
+    }
+
     fn hash(&mut self, pairs: &[Pair]) -> String {
         if pairs.is_empty() {
             return "{}".into();
@@ -210,7 +212,7 @@ impl Gen<'_> {
 
     fn args(&mut self, a: &Args) -> String {
         match a {
-            Args::Positional(v) => v.iter().map(|e| self.expr(e)).collect::<Vec<_>>().join(", "),
+            Args::Positional(v) => self.exprs(v),
             Args::Named(p) => self.pairs(p),
         }
     }
@@ -240,10 +242,7 @@ impl Gen<'_> {
                 s
             }
             ExprKind::Var(n) => self.var(n),
-            ExprKind::Array(items) => {
-                let v: Vec<String> = items.iter().map(|i| self.expr(i)).collect();
-                format!("[{}]", v.join(", "))
-            }
+            ExprKind::Array(items) => format!("[{}]", self.exprs(items)),
             ExprKind::Hash(pairs) => self.hash(pairs),
             ExprKind::Neg(x) => {
                 let s = self.expr(x);
@@ -261,15 +260,10 @@ impl Gen<'_> {
                 format!("{ls} {} {rs}", op.symbol())
             }
             ExprKind::Call { name, args } => {
-                let conv = match name.as_str() {
-                    "to_int" => Some("Int"),
-                    "to_str" => Some("Str"),
-                    "to_bool" => Some("Bool"),
-                    _ => None,
-                };
+                let conv = conversion_type(name);
                 let a = self.args(args);
                 match conv {
-                    Some(t) => format!("{}->assert_return({a})", self.imp(t)),
+                    Some(t) => format!("{}->assert_return({a})", self.tt(&t)),
                     None => format!("{name}({a})"),
                 }
             }

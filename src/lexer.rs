@@ -52,15 +52,15 @@ pub fn lex(file: &str, src: &str) -> Result<Vec<Token>, Diag> {
             continue;
         }
         if c == '#' {
-            while lx.peek(0).map_or(false, |c| c != '\n') {
+            while lx.peek(0).is_some_and(|c| c != '\n') {
                 lx.bump();
             }
             continue;
         }
-        if c == '=' && at_line_start && lx.peek(1).map_or(false, |n| n.is_ascii_alphabetic()) {
+        if c == '=' && at_line_start && lx.peek(1).is_some_and(|n| n.is_ascii_alphabetic()) {
             return lx.err(span, "POD is not supported");
         }
-        let sigil_next = lx.peek(1).map_or(false, |n| is_ident_start(n) || n == '$' || n == '{');
+        let sigil_next = lx.peek(1).is_some_and(|n| is_ident_start(n) || n == '$' || n == '{');
         let tok = if is_ident_start(c) {
             lx.ident()?
         } else if c.is_ascii_digit() {
@@ -115,19 +115,23 @@ impl Lexer<'_> {
         Err(Diag::new(self.file, span, msg))
     }
 
-    fn word(&mut self) -> String {
+    fn take_while(&mut self, pred: impl Fn(char) -> bool) -> String {
         let mut s = String::new();
-        while let Some(c) = self.peek(0).filter(|c| is_ident_char(*c)) {
+        while let Some(c) = self.peek(0).filter(|c| pred(*c)) {
             s.push(c);
             self.bump();
         }
         s
     }
 
+    fn word(&mut self) -> String {
+        self.take_while(is_ident_char)
+    }
+
     fn ident(&mut self) -> Result<Tok, Diag> {
         let mut s = self.word();
         while self.peek(0) == Some(':') && self.peek(1) == Some(':') {
-            if !self.peek(2).map_or(false, is_ident_start) {
+            if !self.peek(2).is_some_and(is_ident_start) {
                 return self.err(self.span(), "operator `::` is not supported");
             }
             self.bump();
@@ -135,7 +139,7 @@ impl Lexer<'_> {
             s.push_str("::");
             s.push_str(&self.word());
         }
-        if self.peek(0) == Some('\'') && self.peek(1).map_or(false, is_ident_start) {
+        if self.peek(0) == Some('\'') && self.peek(1).is_some_and(is_ident_start) {
             return self.err(self.span(), "`'` as a package separator is not supported");
         }
         Ok(Tok::Ident(s))
@@ -143,15 +147,11 @@ impl Lexer<'_> {
 
     fn number(&mut self) -> Result<Tok, Diag> {
         let span = self.span();
-        let mut s = String::new();
-        while let Some(c) = self.peek(0).filter(|c| c.is_ascii_digit()) {
-            s.push(c);
-            self.bump();
-        }
-        if self.peek(0) == Some('.') && self.peek(1).map_or(false, |c| c.is_ascii_digit()) {
+        let s = self.take_while(|c| c.is_ascii_digit());
+        if self.peek(0) == Some('.') && self.peek(1).is_some_and(|c| c.is_ascii_digit()) {
             return self.err(span, "floating-point numbers are not supported");
         }
-        if self.peek(0).map_or(false, is_ident_char) {
+        if self.peek(0).is_some_and(is_ident_char) {
             return self.err(span, "invalid number literal");
         }
         if s.len() > 1 && s.starts_with('0') {
@@ -226,7 +226,7 @@ impl Lexer<'_> {
                     if self.peek(0) == Some('{') {
                         return self.err(here, INTERP_MSG);
                     }
-                    if !self.peek(0).map_or(false, is_ident_start) {
+                    if !self.peek(0).is_some_and(is_ident_start) {
                         return self.err(here, "a literal `$` must be escaped as `\\$`");
                     }
                     let name = self.word();
@@ -235,7 +235,7 @@ impl Lexer<'_> {
                         || matches!(a, Some('[') | Some('{'))
                         || (a == Some(':') && b == Some(':'))
                         || (a == Some('-') && b == Some('>') && matches!(c, Some('[') | Some('{')))
-                        || (a == Some('\'') && b.map_or(false, is_ident_start));
+                        || (a == Some('\'') && b.is_some_and(is_ident_start));
                     if complex {
                         return self.err(here, INTERP_MSG);
                     }
@@ -267,7 +267,7 @@ impl Lexer<'_> {
                 for _ in 0..len {
                     self.bump();
                 }
-                return Ok(Tok::Punct(*p));
+                return Ok(Tok::Punct(p));
             }
         }
         self.err(span, format!("unexpected character `{}`", self.peek(0).unwrap()))

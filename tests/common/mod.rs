@@ -12,6 +12,16 @@ pub struct Out {
     pub targets: Vec<String>,
 }
 
+fn out_of(o: std::process::Output, dir: &Path, targets: Vec<String>) -> Out {
+    Out {
+        code: o.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+        dir: dir.to_path_buf(),
+        targets,
+    }
+}
+
 /// Fresh empty directory under cargo's per-test tmp dir (inside target/, never in the repo tree).
 pub fn tmpdir() -> PathBuf {
     static N: AtomicUsize = AtomicUsize::new(0);
@@ -40,13 +50,7 @@ pub fn run_typerl(dir: &Path, args: &[&str]) -> Out {
         .args(args)
         .output()
         .expect("run typerl");
-    Out {
-        code: o.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
-        dir: dir.to_path_buf(),
-        targets: args.iter().skip(1).map(|s| s.to_string()).collect(),
-    }
+    out_of(o, dir, args.iter().skip(1).map(|s| s.to_string()).collect())
 }
 
 /// Writes `files` into a fresh dir and runs `typerl build <targets>` there.
@@ -143,11 +147,28 @@ pub fn fixture(name: &str) -> PathBuf {
 /// Runs `perl -I. <script>` in `dir`.
 pub fn perl(dir: &Path, script: &str) -> Out {
     let o = Command::new("perl").arg("-I.").arg(script).current_dir(dir).output().expect("run perl");
-    Out {
-        code: o.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
-        dir: dir.to_path_buf(),
-        targets: vec![],
-    }
+    out_of(o, dir, vec![])
 }
+
+/// Minimal Point fixture; line positions are preserved for diagnostic assertions.
+pub const MINI_POINT: &str = "package Point;\n\nfield x: Int;\n\nsub new(Class $class, :Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n\nsub x(Point $self) -> Int {\n    return $self->{x};\n}\n";
+
+// The spec's Point. Lines: 7 sub new, 8 bless, 11 sub x, 15 sub move, 16 Point->new.
+pub const POINT: &str = r#"package Point;
+
+field x: Int;
+field y: Int;
+field label: Optional[Str];
+
+sub new(Class $class, :Int $x, :Int $y, :Optional[Str] $label) -> Point {
+    return bless({ x => $x, y => $y, label => $label }, $class);
+}
+
+sub x(Point $self) -> Int {
+    return $self->{x};
+}
+
+sub move(Point $self, :Int $x, :Int $y) -> Point {
+    return Point->new(x => $x, y => $y, label => $self->{label});
+}
+"#;

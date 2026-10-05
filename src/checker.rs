@@ -27,6 +27,33 @@ pub fn assignable(from: &Type, to: &Type) -> bool {
     }
 }
 
+/// Element type a literal is checked against when the expected type fixes one: `Optional[...]` is
+/// peeled; in a union the literal's container member must be unique; a union containing Any gives
+/// no context (Any accepts the literal as inferred).
+fn expected_elem(expected: Option<&Type>, array: bool) -> Option<Type> {
+    fn peel(mut t: &Type) -> &Type {
+        while let Type::Optional(i) = t {
+            t = i;
+        }
+        t
+    }
+    let elem_of = |t: &Type| match (peel(t), array) {
+        (Type::ArrayRef(e), true) | (Type::HashRef(e), false) => Some((**e).clone()),
+        _ => None,
+    };
+    match peel(expected?) {
+        Type::Union(ms) if ms.iter().any(|m| matches!(peel(m), Type::Any)) => None,
+        Type::Union(ms) => {
+            let mut elems = ms.iter().filter_map(elem_of);
+            match (elems.next(), elems.next()) {
+                (Some(e), None) => Some(e),
+                _ => None,
+            }
+        }
+        t => elem_of(t),
+    }
+}
+
 pub fn check(file: &File, path: &str) -> Result<Facts, Diag> {
     if file.kind == FileKind::Module {
         modules::check_package(file, path)?;
@@ -75,6 +102,15 @@ struct Checker<'a> {
 impl<'a> Checker<'a> {
     fn err<T>(&self, span: Span, msg: impl Into<String>) -> R<T> {
         Err(Diag::new(self.path, span, msg))
+    }
+
+    fn is_own(&self, package: &str) -> bool {
+        self.is_module() && package == self.own.package
+    }
+
+    fn current_kind(&self) -> Option<SubKind> {
+        let sub = self.current?;
+        self.own.subs.get(&sub.name).map(|s| s.kind)
     }
 
     fn is_module(&self) -> bool {
@@ -142,7 +178,7 @@ impl<'a> Checker<'a> {
                 }
                 self.declare(name, ty.clone(), *span)
             }
-            Stmt::If { arms, els, .. } => {
+            Stmt::If { arms, els } => {
                 for (c, b) in arms {
                     let t = self.expr(c, None)?;
                     if t != Type::Bool {
@@ -185,7 +221,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Stmt::Die { msg, .. } => {
+            Stmt::Die { msg } => {
                 let t = self.expr(msg, Some(&Type::Str))?;
                 if t != Type::Str {
                     return self.err(msg.span, format!("die requires a Str message, found {t}"));
@@ -271,30 +307,7 @@ impl<'a> Checker<'a> {
 
     fn literal(&mut self, values: &[&Expr], expected: Option<&Type>, span: Span, array: bool) -> R<Type> {
         let wrap = |t: Type| if array { Type::ArrayRef(Box::new(t)) } else { Type::HashRef(Box::new(t)) };
-        // Peel `Optional[...]`; in a union, use the unique container member of this literal's kind.
-        // A union containing Any gives no context: Any accepts the literal as inferred.
-        fn peel(mut t: &Type) -> &Type {
-            while let Type::Optional(i) = t {
-                t = i;
-            }
-            t
-        }
-        let is_kind = |t: &Type| matches!((t, array), (Type::ArrayRef(_), true) | (Type::HashRef(_), false));
-        let mut ex = expected.map(peel);
-        if let Some(Type::Union(ms)) = ex {
-            let ms: Vec<&Type> = ms.iter().map(peel).collect();
-            let mut it = ms.iter().filter(|m| is_kind(m));
-            ex = match (it.next(), it.next()) {
-                _ if ms.iter().any(|m| matches!(m, Type::Any)) => None,
-                (Some(m), None) => Some(*m),
-                _ => None,
-            };
-        }
-        let elem = match (ex, array) {
-            (Some(Type::ArrayRef(t)), true) | (Some(Type::HashRef(t)), false) => Some((**t).clone()),
-            _ => None,
-        };
-        if let Some(t) = elem {
+        if let Some(t) = expected_elem(expected, array) {
             for v in values {
                 let got = self.expr(v, Some(&t))?;
                 self.expect_assignable(&got, &t, v.span, "")?;
@@ -312,22 +325,17 @@ impl<'a> Checker<'a> {
         Ok(wrap(t))
     }
 
-    /// Args of a legacy call: any non-Void value, no expected types.
-    fn legacy_args(&mut self, args: &Args) -> R<()> {
+    /// Type of a call into legacy Perl: arguments must be non-Void values with no expected type, and the result is Any.
+    fn legacy_call(&mut self, args: &Args) -> R<Type> {
         match args {
-            Args::Positional(v) => v.iter().try_for_each(|e| self.expr(e, None).map(|_| ())),
-            Args::Named(p) => p.iter().try_for_each(|p| self.expr(&p.value, None).map(|_| ())),
+            Args::Positional(v) => v.iter().try_for_each(|e| self.expr(e, None).map(|_| ()))?,
+            Args::Named(p) => p.iter().try_for_each(|p| self.expr(&p.value, None).map(|_| ()))?,
         }
+        Ok(Type::Any)
     }
 
     fn call(&mut self, name: &str, args: &Args, span: Span) -> R<Type> {
-        let conv = match name {
-            "to_int" => Some(Type::Int),
-            "to_str" => Some(Type::Str),
-            "to_bool" => Some(Type::Bool),
-            _ => None,
-        };
-        if let Some(t) = conv {
+        if let Some(t) = conversion_type(name) {
             return match args {
                 Args::Positional(a) if a.len() == 1 => {
                     self.expr(&a[0], None)?;
@@ -342,19 +350,10 @@ impl<'a> Checker<'a> {
         };
         let m = match pkg {
             None => self.own.clone(),
-            Some(p) if self.is_module() && p == self.own.package => self.own.clone(),
-            Some(p) => {
-                if !self.known.contains(p) {
-                    return self.err(span, format!("package `{p}` is not used (add `use {p};`)"));
-                }
-                match self.loader.get(p)? {
-                    Some(m) => m,
-                    None => {
-                        self.legacy_args(args)?;
-                        return Ok(Type::Any);
-                    }
-                }
-            }
+            Some(p) => match self.class_sig(p, span)? {
+                Some(m) => m,
+                None => return self.legacy_call(args),
+            },
         };
         let Some(s) = m.subs.get(fname) else { return self.err(span, format!("unknown function `{name}`")) };
         let qual = format!("{}::{fname}", m.package);
@@ -410,28 +409,27 @@ impl<'a> Checker<'a> {
     /// Declared type is a class that is `use`d, not this module, and has no .tpm.
     fn is_legacy_class(&mut self, ty: &Type) -> R<bool> {
         let Type::Object(c) = ty else { return Ok(false) };
-        if self.is_module() && *c == self.own.package {
-            return Ok(false);
-        }
-        Ok(self.known.contains(c) && self.loader.get(c)?.is_none())
+        Ok(self.known.contains(c) && self.sig_of(c)?.is_none())
     }
 
-    /// Signature of a class written by name in this file. `None` = legacy Perl.
-    fn class_sig(&mut self, class: &str, span: Span) -> R<Option<Rc<ModuleSig>>> {
-        if self.is_module() && class == self.own.package {
+    /// Own package's signature, else the loader's. `None` = legacy Perl.
+    fn sig_of(&mut self, class: &str) -> R<Option<Rc<ModuleSig>>> {
+        if self.is_own(class) {
             return Ok(Some(self.own.clone()));
-        }
-        if !self.known.contains(class) {
-            return self.err(span, format!("package `{class}` is not used (add `use {class};`)"));
         }
         self.loader.get(class)
     }
 
+    /// Signature of a class written by name in this file. `None` = legacy Perl.
+    fn class_sig(&mut self, class: &str, span: Span) -> R<Option<Rc<ModuleSig>>> {
+        if !self.known.contains(class) {
+            return self.err(span, format!("package `{class}` is not used (add `use {class};`)"));
+        }
+        self.sig_of(class)
+    }
+
     fn class_call(&mut self, class: &str, method: &str, args: &Args, span: Span) -> R<Type> {
-        let Some(m) = self.class_sig(class, span)? else {
-            self.legacy_args(args)?;
-            return Ok(Type::Any);
-        };
+        let Some(m) = self.class_sig(class, span)? else { return self.legacy_call(args) };
         let Some(s) = m.subs.get(method) else { return self.err(span, format!("{class} has no method `{method}`")) };
         if s.kind != SubKind::Constructor {
             return self.err(span, format!("{class}::{method} is not a constructor (its first parameter is not `Class $class`)"));
@@ -449,11 +447,8 @@ impl<'a> Checker<'a> {
             return self.err(span, format!("cannot call a method on {rt}"));
         };
         // Receiver types come from checked declarations, so no `use` is required here.
-        let m = if self.is_module() && *c == self.own.package { Some(self.own.clone()) } else { self.loader.get(c)? };
-        let Some(m) = m else {
-            self.legacy_args(args)?;
-            return Ok(Type::Any);
-        };
+        let m = self.sig_of(c)?;
+        let Some(m) = m else { return self.legacy_call(args) };
         let Some(s) = m.subs.get(method) else { return self.err(span, format!("{c} has no method `{method}`")) };
         match s.kind {
             SubKind::Constructor => self.err(span, format!("constructor `{method}` must be called on the class: `{c}->{method}(...)`")),
@@ -469,10 +464,8 @@ impl<'a> Checker<'a> {
         let rt = self.expr(recv, None)?;
         match &rt {
             Type::HashRef(_) => self.err(span, "element access on HashRef is not supported"),
-            Type::Object(c) if self.is_module() && *c == self.own.package => {
-                let in_method = self
-                    .current
-                    .map_or(false, |s| s.params.first().map_or(false, |p| p.name == "self" || p.name == "class"));
+            Type::Object(c) if self.is_own(c) => {
+                let in_method = matches!(self.current_kind(), Some(SubKind::Method | SubKind::Constructor));
                 if !in_method {
                     return self.err(span, format!("fields of {c} can only be read in a method of {c}"));
                 }
@@ -489,8 +482,7 @@ impl<'a> Checker<'a> {
     /// `return bless({...}, $class);` inside a constructor.
     fn bless(&mut self, e: &Expr) -> R<()> {
         let ExprKind::Bless { fields, target } = &e.kind else { unreachable!("caller checks for Bless") };
-        let is_ctor = self.is_module()
-            && self.current.map_or(false, |s| s.params.first().map_or(false, |p| p.name == "class" && p.ty == Type::Class));
+        let is_ctor = self.current_kind() == Some(SubKind::Constructor);
         if !is_ctor {
             return self.err(e.span, "bless is only allowed in a constructor (first parameter `Class $class`)");
         }

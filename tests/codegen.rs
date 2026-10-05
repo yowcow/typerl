@@ -27,25 +27,7 @@ sub new {
 
 #[test]
 fn public_method_checks_exact_class_and_optional_uses_maybe() {
-    let src = r#"package Point;
-
-field x: Int;
-field y: Int;
-field label: Optional[Str];
-
-sub new(Class $class, :Int $x, :Int $y, :Optional[Str] $label) -> Point {
-    return bless({ x => $x, y => $y, label => $label }, $class);
-}
-
-sub x(Point $self) -> Int {
-    return $self->{x};
-}
-
-sub move(Point $self, :Int $x, :Int $y) -> Point {
-    return Point->new(x => $x, y => $y, label => $self->{label});
-}
-"#;
-    let out = build(&[("Point.tpm", src)], &["Point.tpm"]);
+    let out = build(&[("Point.tpm", POINT)], &["Point.tpm"]);
     assert_ok(&out);
     assert_eq!(
         read_output(&out, "Point.tpm"),

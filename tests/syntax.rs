@@ -1,7 +1,7 @@
 mod common;
 use common::*;
 
-// ---- accepted grammar (must stay green through every later task) ----
+// ---- accepted grammar ----
 
 #[test]
 fn accepts_full_script_grammar() {
@@ -539,4 +539,10 @@ fn rejects_overlong_operator_chains() {
 fn accepts_input_at_the_limits() {
     assert_ok(&script(&format!("my Int $v = {}1{};\n", "(".repeat(63), ")".repeat(63))));
     assert_ok(&script(&format!("my Int $v = 1{};\n", " + 1".repeat(256))));
+}
+
+#[test]
+fn rejects_non_bareword_field_key() {
+    rejects("my Any $v = $x->{\"a\"};\n", "a.tpr:1:18:", "field keys must be barewords");
+    rejects("my Any $v = $x->{A::b};\n", "a.tpr:1:18:", "field keys must be barewords");
 }

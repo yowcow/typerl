@@ -62,19 +62,14 @@ fn run() -> ExitCode {
 }
 
 fn compile(path: &str) -> Result<(PathBuf, String, FileKind), Diag> {
-    let kind = match Path::new(path).extension().and_then(|e| e.to_str()) {
-        Some("tpm") => FileKind::Module,
-        Some("tpr") => FileKind::Script,
+    let (kind, ext) = match Path::new(path).extension().and_then(|e| e.to_str()) {
+        Some("tpm") => (FileKind::Module, "pm"),
+        Some("tpr") => (FileKind::Script, "pl"),
         _ => return Err(Diag::new(path, Span::START, "expected a .tpm or .tpr file")),
     };
-    let src = std::fs::read_to_string(path)
-        .map_err(|e| Diag::new(path, Span::START, format!("cannot read file: {e}")))?;
+    let src = std::fs::read_to_string(path).map_err(|e| Diag::cannot_read(path, e))?;
     let file = parser::parse(path, &src, kind)?;
     let facts = checker::check(&file, path)?;
-    let ext = match kind {
-        FileKind::Module => "pm",
-        FileKind::Script => "pl",
-    };
     Ok((Path::new(path).with_extension(ext), codegen::generate(&file, &facts), kind))
 }
 

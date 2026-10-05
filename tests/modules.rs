@@ -187,7 +187,5 @@ fn symlink_to_regular_module_is_followed() {
 
 #[test]
 fn missing_module_is_legacy_perl() {
-    let dir = tmpdir();
-    write(&dir, "a.tpr", "use Foo;\nmy Any $x = Foo::f();\n");
-    assert_ok(&run_typerl(&dir, &["build", "a.tpr"]));
+    assert_ok(&script("use Foo;\nmy Any $x = Foo::f();\n"));
 }

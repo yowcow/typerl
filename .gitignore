@@ -3,3 +3,6 @@
 *.pl
 !tests/**/*.pm
 !tests/**/*.pl
+
+/.plan/
+/.superpowers/

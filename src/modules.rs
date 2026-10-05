@@ -14,8 +14,6 @@ pub enum SubKind {
 
 #[derive(Debug, Clone)]
 pub struct SubSig {
-    #[allow(dead_code)]
-    pub name: String,
     pub kind: SubKind,
     /// Parameters after the invocant.
     pub params: Vec<Param>,
@@ -175,7 +173,7 @@ fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> R
         }
         check_type(&p.ty, known, false).map_err(|m| (p.span, m))?;
     }
-    let named = params.first().map_or(false, |p| p.named);
+    let named = params.first().is_some_and(|p| p.named);
     if params.iter().any(|p| p.named != named) {
         return Err((s.span, "positional and named parameters cannot be mixed".into()));
     }
@@ -188,7 +186,7 @@ fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> R
         }
     }
     check_type(&s.ret, known, true).map_err(|m| (s.span, m))?;
-    Ok(SubSig { name: s.name.clone(), kind: sub_kind, params, named, ret: s.ret.clone() })
+    Ok(SubSig { kind: sub_kind, params, named, ret: s.ret.clone() })
 }
 
 /// Signatures of `use`d typed modules, read from `<cwd>/<Pkg path>.tpm`.
@@ -200,15 +198,14 @@ pub struct Loader {
 /// Only a genuinely absent `.tpm` is legacy Perl. Anything else that is not a readable regular
 /// file (I/O error, directory, dangling symlink) is an error rather than a silent Any.
 fn module_exists(path: &Path, p: &str) -> Result<bool, Diag> {
-    let err = |msg: String| Diag::new(p, Span::START, msg);
     match std::fs::symlink_metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(err(format!("cannot read file: {e}"))),
+        Err(e) => return Err(Diag::cannot_read(p, e)),
         Ok(_) => {}
     }
     match std::fs::metadata(path) {
-        Err(e) => Err(err(format!("cannot read file: {e}"))),
-        Ok(m) if !m.is_file() => Err(err("cannot read file: not a regular file".to_string())),
+        Err(e) => Err(Diag::cannot_read(p, e)),
+        Ok(m) if !m.is_file() => Err(Diag::cannot_read(p, "not a regular file")),
         Ok(_) => Ok(true),
     }
 }
@@ -222,8 +219,7 @@ impl Loader {
         let path = module_path(package);
         let p = path.to_string_lossy().into_owned();
         let sig = if module_exists(&path, &p)? {
-            let src = std::fs::read_to_string(&path)
-                .map_err(|e| Diag::new(&p, Span::START, format!("cannot read file: {e}")))?;
+            let src = std::fs::read_to_string(&path).map_err(|e| Diag::cannot_read(&p, e))?;
             let file = parser::parse(&p, &src, FileKind::Module)?;
             check_package(&file, &p)?;
             Some(Rc::new(module_sig(&file, &p)?))

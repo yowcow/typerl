@@ -1,26 +1,6 @@
 mod common;
 use common::*;
 
-// The spec's Point. Lines: 7 sub new, 8 bless, 11 sub x, 15 sub move, 16 Point->new.
-const POINT: &str = r#"package Point;
-
-field x: Int;
-field y: Int;
-field label: Optional[Str];
-
-sub new(Class $class, :Int $x, :Int $y, :Optional[Str] $label) -> Point {
-    return bless({ x => $x, y => $y, label => $label }, $class);
-}
-
-sub x(Point $self) -> Int {
-    return $self->{x};
-}
-
-sub move(Point $self, :Int $x, :Int $y) -> Point {
-    return Point->new(x => $x, y => $y, label => $self->{label});
-}
-"#;
-
 const LABEL: &str = r#"package Point::Label;
 
 field text: Str;
@@ -111,8 +91,9 @@ fn field_read_in_same_package() {
 
 #[test]
 fn rejects_field_read_in_function() {
-    assert_err(
-        &build(&[("Point.tpm", "package Point;\nfield x: Int;\nsub dx(Point $a, Point $b) -> Int {\n    return $a->{x} - $b->{x};\n}\n")], &["Point.tpm"]),
+    rejects_module(
+        "Point.tpm",
+        "package Point;\nfield x: Int;\nsub dx(Point $a, Point $b) -> Int {\n    return $a->{x} - $b->{x};\n}\n",
         "Point.tpm:4:",
         "fields of Point can only be read in a method of Point",
     );
@@ -205,7 +186,7 @@ fn class_value_may_be_passed_to_runtime_checked_conversions() {
 #[test]
 fn rejects_constructor_without_class_param() {
     let point = "package Point;\nfield x: Int;\nsub new(:Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n";
-    assert_err(&build(&[("Point.tpm", point)], &["Point.tpm"]), "Point.tpm:4:", "bless is only allowed in a constructor");
+    rejects_module("Point.tpm", point, "Point.tpm:4:", "bless is only allowed in a constructor");
     assert_err(
         &build(&[("Point.tpm", point), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\n")], &["a.tpr"]),
         "a.tpr:2:",
@@ -364,8 +345,6 @@ fn constructor_accepts_empty_literal_for_optional_arrayref_field() {
 
 // ---- Task 12: qualified method names are outside the bare-method syntax ----
 
-const QPOINT: &str = "package Point;\n\nfield x: Int;\n\nsub new(Class $class, :Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n\nsub x(Point $self) -> Int {\n    return $self->{x};\n}\n";
-
 fn rejects_qualified_method(files: &[(&str, &str)], prefix: &str) {
     assert_err(&build(files, &["a.tpr"]), prefix, "qualified method names are not supported");
 }
@@ -373,7 +352,7 @@ fn rejects_qualified_method(files: &[(&str, &str)], prefix: &str) {
 #[test]
 fn rejects_qualified_method_name_on_instance() {
     rejects_qualified_method(
-        &[("Point.tpm", QPOINT), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\nmy Int $n = $p->Point::x();\n")],
+        &[("Point.tpm", MINI_POINT), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\nmy Int $n = $p->Point::x();\n")],
         "a.tpr:3:",
     );
 }
@@ -394,4 +373,14 @@ fn rejects_qualified_method_name_on_legacy_instance() {
 #[test]
 fn accepts_qualified_package_receiver() {
     assert_ok(&script("use Legacy::Util;\nLegacy::Util->emit(1);\n"));
+}
+
+#[test]
+fn constructor_reads_field_of_same_package() {
+    assert_ok(&build(&[("Point.tpm", "package Point;\nfield x: Int;\nsub new(Class $class, :Point $from) -> Point {\n    return bless({ x => $from->{x} }, $class);\n}\n")], &["Point.tpm"]));
+}
+
+#[test]
+fn rejects_bless_in_method() {
+    rejects_module("Point.tpm", "package Point;\nfield x: Int;\nsub new(Class $class, :Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\nsub again(Point $self) -> Point {\n    return bless({ x => 1 }, $class);\n}\n", "Point.tpm:7:", "bless is only allowed in a constructor");
 }

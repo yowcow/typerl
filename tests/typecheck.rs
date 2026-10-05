@@ -3,9 +3,6 @@ use common::*;
 
 const MATH: &str = "package Math;\n\nsub add(Int $x, Int $y) -> Int {\n    return $x + $y;\n}\n";
 
-// 11 lines: 1 package, 3 field, 5 sub new, 9 sub x, 11 closing brace.
-const POINT: &str = "package Point;\n\nfield x: Int;\n\nsub new(Class $class, :Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n\nsub x(Point $self) -> Int {\n    return $self->{x};\n}\n";
-
 fn with(files: &[(&str, &str)], main: &str) -> Out {
     let mut all = files.to_vec();
     all.push(("a.tpr", main));
@@ -265,7 +262,7 @@ fn rejects_named_args_to_positional_function() {
 #[test]
 fn rejects_constructor_called_as_function() {
     assert_err(
-        &with(&[("Point.tpm", POINT)], "use Point;\nmy Any $p = Point::new(\"Point\", 1, 2);\n"),
+        &with(&[("Point.tpm", MINI_POINT)], "use Point;\nmy Any $p = Point::new(\"Point\", 1, 2);\n"),
         "a.tpr:2:",
         "Point::new is a constructor; call it as `Point->new(...)`",
     );
@@ -273,9 +270,9 @@ fn rejects_constructor_called_as_function() {
 
 #[test]
 fn rejects_method_called_as_function() {
-    assert_err(&with(&[("Point.tpm", POINT)], "use Point;\nmy Any $v = Point::x(1);\n"), "a.tpr:2:", "Point::x is a method");
-    let module = format!("{POINT}\nsub f(Point $p) -> Int {{\n    return x($p);\n}}\n");
-    assert_err(&build(&[("Point.tpm", module.as_str())], &["Point.tpm"]), "Point.tpm:14:", "Point::x is a method");
+    assert_err(&with(&[("Point.tpm", MINI_POINT)], "use Point;\nmy Any $v = Point::x(1);\n"), "a.tpr:2:", "Point::x is a method");
+    let module = format!("{MINI_POINT}\nsub f(Point $p) -> Int {{\n    return x($p);\n}}\n");
+    rejects_module("Point.tpm", &module, "Point.tpm:14:", "Point::x is a method");
 }
 
 #[test]
@@ -365,4 +362,9 @@ fn union_without_any_still_checks_literal_elements() {
 #[test]
 fn optional_container_inside_union_member_gives_literal_context() {
     assert_ok(&script("my Optional[ArrayRef[Str]]|Int $v = [];\n"));
+}
+
+#[test]
+fn union_without_any_still_checks_hash_literal_values() {
+    rejects("my HashRef[Int]|Str $v = { a => \"x\" };\n", "a.tpr:1:", "type mismatch: expected Int, found Str");
 }

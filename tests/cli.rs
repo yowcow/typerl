@@ -99,7 +99,7 @@ fn reports_each_failing_file() {
 // ---- Task 12: compiler thread creation failure ----
 
 /// Runs the binary under a 256 MiB address-space limit (`ulimit -v` in a child shell only), so the
-/// 512 MiB compiler stack cannot be reserved. Returns None if the limit cannot be set.
+/// 512 MiB compiler stack cannot be reserved.
 #[test]
 fn thread_spawn_failure_is_a_diagnostic_and_writes_nothing() {
     let dir = tmpdir();

@@ -60,8 +60,6 @@ pub struct File {
 #[derive(Debug)]
 pub struct Use {
     pub name: String,
-    #[allow(dead_code)] // kept for diagnostics on `use` lines
-    pub span: Span,
 }
 
 #[derive(Debug)]
@@ -99,10 +97,10 @@ pub struct Param {
 #[derive(Debug)]
 pub enum Stmt {
     My { ty: Type, name: String, init: Expr, span: Span },
-    If { arms: Vec<(Expr, Vec<Stmt>)>, els: Option<Vec<Stmt>>, #[allow(dead_code)] span: Span },
+    If { arms: Vec<(Expr, Vec<Stmt>)>, els: Option<Vec<Stmt>> },
     Foreach { ty: Type, var: String, list: Expr, body: Vec<Stmt>, span: Span },
     Return { value: Option<Expr>, span: Span },
-    Die { msg: Expr, #[allow(dead_code)] span: Span },
+    Die { msg: Expr },
     Expr(Expr),
 }
 
@@ -198,7 +196,17 @@ impl BinOp {
 pub fn terminates(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| match s {
         Stmt::Return { .. } | Stmt::Die { .. } => true,
-        Stmt::If { arms, els: Some(e), .. } => arms.iter().all(|(_, b)| terminates(b)) && terminates(e),
+        Stmt::If { arms, els: Some(e) } => arms.iter().all(|(_, b)| terminates(b)) && terminates(e),
         _ => false,
     })
+}
+
+/// Return type of a built-in conversion, or None for other function names.
+pub fn conversion_type(name: &str) -> Option<Type> {
+    match name {
+        "to_int" => Some(Type::Int),
+        "to_str" => Some(Type::Str),
+        "to_bool" => Some(Type::Bool),
+        _ => None,
+    }
 }
