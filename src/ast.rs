@@ -193,6 +193,9 @@ impl BinOp {
 }
 
 /// True when every path through `stmts` ends in `return` or `die`.
+/// `any` (not just the last statement) suffices: a terminating `return`/`die` or fully-terminating
+/// `if`/`else` never falls through, so trailing code is dead (`foreach` is conservatively
+/// non-terminating; there is no `break`/`last`/`while`).
 pub fn terminates(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| match s {
         Stmt::Return { .. } | Stmt::Die { .. } => true,

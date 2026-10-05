@@ -1,10 +1,12 @@
 use crate::ast::*;
 use crate::checker::Facts;
+use crate::diag::{Diag, Span};
 use std::collections::{BTreeSet, HashSet};
 
-pub fn generate(file: &File, facts: &Facts) -> String {
+pub fn generate(file: &File, facts: &Facts, path: &str) -> Result<String, Diag> {
     let mut g = Gen {
         facts,
+        path,
         public: file.kind == FileKind::Module,
         imports: BTreeSet::new(),
         named: HashSet::new(),
@@ -16,14 +18,14 @@ pub fn generate(file: &File, facts: &Facts) -> String {
             Item::Field(_) => {}
             Item::Sub(s) => {
                 g.out.push(String::new());
-                g.sub(s);
+                g.sub(s)?;
                 prev_stmt = false;
             }
             Item::Stmt(s) => {
                 if !prev_stmt {
                     g.out.push(String::new());
                 }
-                g.stmt(s, 0);
+                g.stmt(s, 0)?;
                 prev_stmt = true;
             }
         }
@@ -38,7 +40,11 @@ pub fn generate(file: &File, facts: &Facts) -> String {
         let names: Vec<&str> = g.imports.iter().copied().collect();
         lines.push(format!("use Types::Standard qw({});", names.join(" ")));
     }
+    let mut seen = HashSet::new();
     for u in &file.uses {
+        if !seen.insert(u.name.as_str()) {
+            continue;
+        }
         lines.push(format!("use {} ();", u.name));
     }
     lines.extend(g.out);
@@ -46,11 +52,12 @@ pub fn generate(file: &File, facts: &Facts) -> String {
         lines.push(String::new());
         lines.push("1;".into());
     }
-    lines.join("\n") + "\n"
+    Ok(lines.join("\n") + "\n")
 }
 
 struct Gen<'a> {
     facts: &'a Facts,
+    path: &'a str,
     public: bool,
     imports: BTreeSet<&'static str>,
     /// Named parameters of the sub being emitted (read as `$args{name}`).
@@ -69,47 +76,50 @@ impl Gen<'_> {
     }
 
     /// Type::Tiny expression for a value type.
-    fn tt(&mut self, t: &Type) -> String {
+    fn tt(&mut self, t: &Type, span: Span) -> Result<String, Diag> {
         match t {
-            Type::Int => self.imp("Int"),
-            Type::Str => self.imp("Str"),
-            Type::Bool => self.imp("Bool"),
-            Type::Any => self.imp("Any"),
+            Type::Int => Ok(self.imp("Int")),
+            Type::Str => Ok(self.imp("Str")),
+            Type::Bool => Ok(self.imp("Bool")),
+            Type::Any => Ok(self.imp("Any")),
             Type::ArrayRef(e) => {
-                let i = self.tt(e);
-                format!("{}[{i}]", self.imp("ArrayRef"))
+                let i = self.tt(e, span)?;
+                Ok(format!("{}[{i}]", self.imp("ArrayRef")))
             }
             Type::HashRef(e) => {
-                let i = self.tt(e);
-                format!("{}[{i}]", self.imp("HashRef"))
+                let i = self.tt(e, span)?;
+                Ok(format!("{}[{i}]", self.imp("HashRef")))
             }
             Type::Optional(e) => {
-                let i = self.tt(e);
-                format!("{}[{i}]", self.imp("Maybe"))
+                let i = self.tt(e, span)?;
+                Ok(format!("{}[{i}]", self.imp("Maybe")))
             }
             Type::Union(ts) => {
-                let parts: Vec<String> = ts.iter().map(|t| self.tt(t)).collect();
-                format!("({})", parts.join(" | "))
+                let mut parts = Vec::with_capacity(ts.len());
+                for t in ts {
+                    parts.push(self.tt(t, span)?);
+                }
+                Ok(format!("({})", parts.join(" | ")))
             }
             Type::Object(c) => {
                 self.imp("InstanceOf");
-                format!("(InstanceOf[\"{c}\"])->where(sub {{ ref($_) eq \"{c}\" }})")
+                Ok(format!("(InstanceOf[\"{c}\"])->where(sub {{ ref($_) eq \"{c}\" }})"))
             }
-            Type::Void | Type::Class => unreachable!("the checker rejects Void/Class values"),
+            Type::Void | Type::Class => Err(Diag::new(self.path, span, "internal error: unexpected Void/Class type")),
         }
     }
 
     /// `tt` wrapped so a following `->assert_*` applies to the whole type.
-    fn check_target(&mut self, t: &Type) -> String {
-        let s = self.tt(t);
-        if matches!(t, Type::ArrayRef(_) | Type::HashRef(_) | Type::Optional(_)) {
+    fn check_target(&mut self, t: &Type, span: Span) -> Result<String, Diag> {
+        let s = self.tt(t, span)?;
+        Ok(if matches!(t, Type::ArrayRef(_) | Type::HashRef(_) | Type::Optional(_)) {
             format!("({s})")
         } else {
             s
-        }
+        })
     }
 
-    fn sub(&mut self, s: &Sub) {
+    fn sub(&mut self, s: &Sub) -> Result<(), Diag> {
         self.named = s.params.iter().filter(|p| p.named).map(|p| p.name.clone()).collect();
         self.line(0, format!("sub {} {{", s.name));
         let mut vars: Vec<String> = s.params.iter().filter(|p| !p.named).map(|p| format!("${}", p.name)).collect();
@@ -125,66 +135,69 @@ impl Gen<'_> {
                     continue;
                 }
                 let v = self.var(&p.name);
-                let t = self.check_target(&p.ty);
+                let t = self.check_target(&p.ty, p.span)?;
                 self.line(1, format!("{t}->assert_valid({v});"));
             }
         }
-        self.block(&s.body, 1);
+        self.block(&s.body, 1)?;
         if s.ret == Type::Void && !terminates(&s.body) {
             self.line(1, "return;".into());
         }
         self.line(0, "}".into());
         self.named.clear();
+        Ok(())
     }
 
-    fn block(&mut self, stmts: &[Stmt], d: usize) {
+    fn block(&mut self, stmts: &[Stmt], d: usize) -> Result<(), Diag> {
         for s in stmts {
-            self.stmt(s, d);
+            self.stmt(s, d)?;
         }
+        Ok(())
     }
 
-    fn stmt(&mut self, st: &Stmt, d: usize) {
+    fn stmt(&mut self, st: &Stmt, d: usize) -> Result<(), Diag> {
         match st {
             Stmt::My { ty, name, init, span } => {
-                let mut v = self.expr(init);
+                let mut v = self.expr(init)?;
                 if self.facts.narrow.contains(span) {
-                    v = format!("{}->assert_return({v})", self.check_target(ty));
+                    v = format!("{}->assert_return({v})", self.check_target(ty, *span)?);
                 }
                 self.line(d, format!("my ${name} = {v};"));
             }
             Stmt::If { arms, els } => {
                 for (i, (c, b)) in arms.iter().enumerate() {
-                    let c = self.expr(c);
+                    let c = self.expr(c)?;
                     let head = if i == 0 { format!("if ({c}) {{") } else { format!("}} elsif ({c}) {{") };
                     self.line(d, head);
-                    self.block(b, d + 1);
+                    self.block(b, d + 1)?;
                 }
                 if let Some(b) = els {
                     self.line(d, "} else {".into());
-                    self.block(b, d + 1);
+                    self.block(b, d + 1)?;
                 }
                 self.line(d, "}".into());
             }
             Stmt::Foreach { var, list, body, .. } => {
-                let l = self.expr(list);
+                let l = self.expr(list)?;
                 self.line(d, format!("foreach my ${var} (@{{{l}}}) {{"));
-                self.block(body, d + 1);
+                self.block(body, d + 1)?;
                 self.line(d, "}".into());
             }
             Stmt::Return { value: Some(v), .. } => {
-                let v = self.expr(v);
+                let v = self.expr(v)?;
                 self.line(d, format!("return {v};"));
             }
             Stmt::Return { value: None, .. } => self.line(d, "return;".into()),
             Stmt::Die { msg } => {
-                let m = self.expr(msg);
+                let m = self.expr(msg)?;
                 self.line(d, format!("die {m};"));
             }
             Stmt::Expr(e) => {
-                let e = self.expr(e);
+                let e = self.expr(e)?;
                 self.line(d, format!("{e};"));
             }
         }
+        Ok(())
     }
 
     fn var(&self, n: &str) -> String {
@@ -195,22 +208,30 @@ impl Gen<'_> {
         }
     }
 
-    fn pairs(&mut self, pairs: &[Pair]) -> String {
-        pairs.iter().map(|p| format!("{} => {}", p.key, self.expr(&p.value))).collect::<Vec<_>>().join(", ")
-    }
-
-    fn exprs(&mut self, items: &[Expr]) -> String {
-        items.iter().map(|e| self.expr(e)).collect::<Vec<_>>().join(", ")
-    }
-
-    fn hash(&mut self, pairs: &[Pair]) -> String {
-        if pairs.is_empty() {
-            return "{}".into();
+    fn pairs(&mut self, pairs: &[Pair]) -> Result<String, Diag> {
+        let mut out = Vec::with_capacity(pairs.len());
+        for p in pairs {
+            out.push(format!("{} => {}", p.key, self.expr(&p.value)?));
         }
-        format!("{{ {} }}", self.pairs(pairs))
+        Ok(out.join(", "))
     }
 
-    fn args(&mut self, a: &Args) -> String {
+    fn exprs(&mut self, items: &[Expr]) -> Result<String, Diag> {
+        let mut out = Vec::with_capacity(items.len());
+        for e in items {
+            out.push(self.expr(e)?);
+        }
+        Ok(out.join(", "))
+    }
+
+    fn hash(&mut self, pairs: &[Pair]) -> Result<String, Diag> {
+        if pairs.is_empty() {
+            return Ok("{}".into());
+        }
+        Ok(format!("{{ {} }}", self.pairs(pairs)?))
+    }
+
+    fn args(&mut self, a: &Args) -> Result<String, Diag> {
         match a {
             Args::Positional(v) => self.exprs(v),
             Args::Named(p) => self.pairs(p),
@@ -218,18 +239,18 @@ impl Gen<'_> {
     }
 
     /// Operand of a binary operator: parenthesize lower precedence, and equal precedence on the right.
-    fn operand(&mut self, e: &Expr, parent: u8, right: bool) -> String {
-        let s = self.expr(e);
-        match &e.kind {
+    fn operand(&mut self, e: &Expr, parent: u8, right: bool) -> Result<String, Diag> {
+        let s = self.expr(e)?;
+        Ok(match &e.kind {
             ExprKind::Binary(op, ..) if op.prec() < parent || (right && op.prec() == parent) => format!("({s})"),
             _ => s,
-        }
+        })
     }
 
-    fn expr(&mut self, e: &Expr) -> String {
+    fn expr(&mut self, e: &Expr) -> Result<String, Diag> {
         match &e.kind {
-            ExprKind::Int(n) => n.clone(),
-            ExprKind::Str(StrLit::Single(raw)) => raw.clone(),
+            ExprKind::Int(n) => Ok(n.clone()),
+            ExprKind::Str(StrLit::Single(raw)) => Ok(raw.clone()),
             ExprKind::Str(StrLit::Double(parts)) => {
                 let mut s = String::from("\"");
                 for p in parts {
@@ -239,51 +260,51 @@ impl Gen<'_> {
                     }
                 }
                 s.push('"');
-                s
+                Ok(s)
             }
-            ExprKind::Var(n) => self.var(n),
-            ExprKind::Array(items) => format!("[{}]", self.exprs(items)),
-            ExprKind::Hash(pairs) => self.hash(pairs),
+            ExprKind::Var(n) => Ok(self.var(n)),
+            ExprKind::Array(items) => Ok(format!("[{}]", self.exprs(items)?)),
+            ExprKind::Hash(pairs) => Ok(self.hash(pairs)?),
             ExprKind::Neg(x) => {
-                let s = self.expr(x);
+                let s = self.expr(x)?;
                 // `-f(3)` / `-C->new(..)->x` read as a file test in Perl for a single-letter root,
                 // so everything except a plain int or variable is parenthesized.
-                if matches!(x.kind, ExprKind::Int(_) | ExprKind::Var(_)) {
+                Ok(if matches!(x.kind, ExprKind::Int(_) | ExprKind::Var(_)) {
                     format!("-{s}")
                 } else {
                     format!("-({s})")
-                }
+                })
             }
             ExprKind::Binary(op, l, r) => {
-                let ls = self.operand(l, op.prec(), false);
-                let rs = self.operand(r, op.prec(), true);
-                format!("{ls} {} {rs}", op.symbol())
+                let ls = self.operand(l, op.prec(), false)?;
+                let rs = self.operand(r, op.prec(), true)?;
+                Ok(format!("{ls} {} {rs}", op.symbol()))
             }
             ExprKind::Call { name, args } => {
                 let conv = conversion_type(name);
-                let a = self.args(args);
+                let a = self.args(args)?;
                 match conv {
-                    Some(t) => format!("{}->assert_return({a})", self.tt(&t)),
-                    None => format!("{name}({a})"),
+                    Some(t) => Ok(format!("{}->assert_return({a})", self.tt(&t, e.span)?)),
+                    None => Ok(format!("{name}({a})")),
                 }
             }
             ExprKind::ClassCall { class, method, args } => {
-                let a = self.args(args);
-                format!("{class}->{method}({a})")
+                let a = self.args(args)?;
+                Ok(format!("{class}->{method}({a})"))
             }
             ExprKind::MethodCall { recv, method, args } => {
-                let r = self.expr(recv);
-                let a = self.args(args);
-                format!("{r}->{method}({a})")
+                let r = self.expr(recv)?;
+                let a = self.args(args)?;
+                Ok(format!("{r}->{method}({a})"))
             }
             ExprKind::Field { recv, name } => {
-                let r = self.expr(recv);
-                format!("{r}->{{{name}}}")
+                let r = self.expr(recv)?;
+                Ok(format!("{r}->{{{name}}}"))
             }
             ExprKind::Bless { fields, target } => {
-                let h = self.hash(fields);
-                let t = self.expr(target);
-                format!("bless({h}, {t})")
+                let h = self.hash(fields)?;
+                let t = self.expr(target)?;
+                Ok(format!("bless({h}, {t})"))
             }
         }
     }

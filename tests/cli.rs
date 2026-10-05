@@ -70,6 +70,13 @@ fn diagnostic_format_is_file_line_col() {
 }
 
 #[test]
+fn diagnostic_col_counts_chars_not_bytes() {
+    let out = script("my Str $s = 'あ'; my Str $t = 1;\n");
+    assert_eq!(out.code, 1);
+    assert_eq!(out.stderr, "a.tpr:1:30: error: type mismatch: expected Str, found Int\n");
+}
+
+#[test]
 fn builds_multiple_files() {
     assert_ok(&build(
         &[("one.tpr", "my Int $x = 1;\n"), ("two.tpr", "my Int $y = 2;\n")],

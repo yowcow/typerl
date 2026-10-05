@@ -79,7 +79,9 @@ pub fn module_path(package: &str) -> PathBuf {
 }
 
 pub fn check_package(file: &File, path: &str) -> Result<(), Diag> {
-    let (name, span) = file.package.as_ref().expect("modules always have a package");
+    let Some((name, span)) = file.package.as_ref() else {
+        return Err(Diag::new(path, Span::START, "module is missing a package"));
+    };
     let expected = expected_package(path).map_err(|m| Diag::new(path, *span, m))?;
     if *name != expected {
         return Err(Diag::new(path, *span, format!("package `{name}` does not match the file name (expected `{expected}`)")));
