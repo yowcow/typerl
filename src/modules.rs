@@ -26,6 +26,8 @@ pub struct ModuleSig {
     pub package: String,
     pub subs: HashMap<String, SubSig>,
     pub fields: Vec<(String, Type)>,
+    pub is_interface: bool,
+    pub iface: HashMap<String, SubSig>,
 }
 
 pub const RESERVED: &[&str] = &[
@@ -113,7 +115,41 @@ pub fn known_names(file: &File) -> HashSet<String> {
 pub fn module_sig(file: &File, path: &str) -> Result<ModuleSig, Diag> {
     let package = file.package.as_ref().map_or_else(|| "main".to_string(), |p| p.0.clone());
     let known = known_names(file);
-    let mut sig = ModuleSig { package: package.clone(), subs: HashMap::new(), fields: Vec::new() };
+    let is_interface = file.interface.is_some();
+    if file.kind == FileKind::Module && is_interface {
+        if let Some(item) = file.items.first() {
+            let (span, msg) = match item {
+                Item::Field(f) => (f.span, "interface modules cannot declare fields".to_string()),
+                Item::Sub(s) => (
+                    s.span,
+                    "interface modules cannot define sub bodies (move them to a class module)".to_string(),
+                ),
+                Item::Stmt(s) => (
+                    stmt_span(s).unwrap_or_else(|| file.interface.as_ref().expect("interface checked").span),
+                    "interface modules cannot define sub bodies (move them to a class module)".to_string(),
+                ),
+            };
+            return Err(Diag::new(path, span, msg));
+        }
+    }
+    let mut iface = HashMap::new();
+    if let Some(block) = file.interface.as_ref() {
+        if block.methods.is_empty() {
+            return Err(Diag::new(path, block.span, "interface must declare at least one method"));
+        }
+        for m in &block.methods {
+            let tmp = Sub { name: m.name.clone(), params: m.params.clone(), ret: m.ret.clone(), body: vec![], span: m.span };
+            let ss = sub_sig(&tmp, file.kind, &package, &known).map_err(|(sp, msg)| Diag::new(path, sp, msg))?;
+            if ss.kind != SubKind::Method {
+                return Err(Diag::new(path, m.span, "interface methods must be methods"));
+            }
+            if iface.contains_key(&m.name) {
+                return Err(Diag::new(path, m.span, format!("duplicate method `{}` in interface", m.name)));
+            }
+            iface.insert(m.name.clone(), ss);
+        }
+    }
+    let mut sig = ModuleSig { package: package.clone(), subs: HashMap::new(), fields: Vec::new(), is_interface, iface };
     for item in &file.items {
         match item {
             Item::Field(f) => {
@@ -136,8 +172,18 @@ pub fn module_sig(file: &File, path: &str) -> Result<ModuleSig, Diag> {
     Ok(sig)
 }
 
-fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> Result<SubSig, (Span, String)> {
-    if RESERVED.contains(&s.name.as_str()) {
+/// Span of a top-level statement when one is recorded; `None` for `if`/`die`.
+/// Unreachable for modules (the parser only allows field/sub there), kept for the
+/// interface-shape check's `Item::Stmt` arm.
+fn stmt_span(s: &Stmt) -> Option<Span> {
+    match s {
+        Stmt::My { span, .. } | Stmt::Foreach { span, .. } | Stmt::Return { span, .. } => Some(*span),
+        Stmt::Expr(e) => Some(e.span),
+        Stmt::If { .. } | Stmt::Die { .. } => None,
+    }
+}
+
+fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> Result<SubSig, (Span, String)> {    if RESERVED.contains(&s.name.as_str()) {
         return Err((s.span, format!("`{}` is a reserved name", s.name)));
     }
     let mut params = s.params.clone();

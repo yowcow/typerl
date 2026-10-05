@@ -189,3 +189,48 @@ fn symlink_to_regular_module_is_followed() {
 fn missing_module_is_legacy_perl() {
     assert_ok(&script("use Foo;\nmy Any $x = Foo::f();\n"));
 }
+
+#[test]
+fn rejects_field_in_interface_module() {
+    rejects_module(
+        "Shape.tpm",
+        "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\nfield x: Int;\n",
+        "Shape.tpm:",
+        "interface modules cannot declare fields",
+    );
+}
+
+#[test]
+fn rejects_bodied_sub_in_interface_module() {
+    rejects_module(
+        "Shape.tpm",
+        "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\nsub area(Shape $self) -> Int {\n    return 1;\n}\n",
+        "Shape.tpm:",
+        "interface modules cannot define sub bodies",
+    );
+}
+
+#[test]
+fn rejects_empty_interface_module() {
+    rejects_module("Shape.tpm", "package Shape;\ninterface {\n}\n", "Shape.tpm:", "interface must declare at least one method");
+}
+
+#[test]
+fn rejects_duplicate_method_in_interface() {
+    rejects_module(
+        "Shape.tpm",
+        "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n    sub area(Shape $self) -> Int;\n}\n",
+        "Shape.tpm:",
+        "duplicate method `area` in interface",
+    );
+}
+
+#[test]
+fn rejects_non_method_in_interface() {
+    rejects_module(
+        "Shape.tpm",
+        "package Shape;\ninterface {\n    sub f(Int $x) -> Int;\n}\n",
+        "Shape.tpm:",
+        "interface methods must be methods",
+    );
+}
