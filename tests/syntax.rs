@@ -507,3 +507,36 @@ fn rejects_mixed_call_arguments() {
     rejects("sub f(Int $a) -> Int {\n    return $a;\n}\nmy Int $v = f(1, b => 2);\n", "a.tpr:4:", "cannot mix positional and named arguments");
     rejects("sub f(Int $a) -> Int {\n    return $a;\n}\nmy Int $v = f(b => 2, 1);\n", "a.tpr:4:", "cannot mix positional and named arguments");
 }
+
+// ---- resource limits: hostile input must give a diagnostic, never a stack overflow ----
+
+#[test]
+fn rejects_deeply_nested_input() {
+    let n = 10_000;
+    for src in [
+        format!("my Int $v = {}1{};\n", "(".repeat(n), ")".repeat(n)),
+        format!("my Int $v = {}", "(".repeat(n)),
+        format!("my Any $v = {}{};\n", "[".repeat(n), "]".repeat(n)),
+        format!("my Any $v = {}1{};\n", "f(".repeat(n), ")".repeat(n)),
+        format!("my Any $v = {}1{};\n", "{ a => ".repeat(n), " }".repeat(n)),
+        format!("my {}Int{} $v = 1;\n", "ArrayRef[".repeat(n), "]".repeat(n)),
+        format!("{}{}", "if (1) {\n".repeat(n), "}\n".repeat(n)),
+        format!("my Int $v = {}1;\n", "- ".repeat(n)),
+    ] {
+        rejects(&src, "a.tpr:", "nesting is too deep (limit 64)");
+    }
+}
+
+#[test]
+fn rejects_overlong_operator_chains() {
+    let n = 10_000;
+    rejects(&format!("my Int $v = 1{};\n", " + 1".repeat(n)), "a.tpr:", "expression is too long (limit 256)");
+    rejects(&format!("my Int $v = 1{};\n", " * 1".repeat(n)), "a.tpr:", "expression is too long (limit 256)");
+    rejects(&format!("my Any $v = Foo->new(){};\n", "->f".repeat(n)), "a.tpr:", "expression is too long (limit 256)");
+}
+
+#[test]
+fn accepts_input_at_the_limits() {
+    assert_ok(&script(&format!("my Int $v = {}1{};\n", "(".repeat(63), ")".repeat(63))));
+    assert_ok(&script(&format!("my Int $v = 1{};\n", " + 1".repeat(256))));
+}

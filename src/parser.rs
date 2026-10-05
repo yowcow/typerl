@@ -5,6 +5,10 @@ use crate::lexer::{lex, Tok, Token};
 type R<T> = Result<T, Diag>;
 
 const WORD_OPS: &[&str] = &["ne", "lt", "gt", "le", "ge", "cmp", "and", "or", "not", "xor", "x", "isa"];
+/// Max nesting of expressions, blocks and types; keeps the AST height (and every recursive walk over it) bounded.
+const MAX_DEPTH: usize = 64;
+/// Max operators in one left-associative chain (`a + b + ...`, `a->f->g...`).
+const MAX_CHAIN: usize = 256;
 const MODIFIERS: &[&str] = &["if", "unless", "while", "until", "for", "foreach"];
 
 /// Words that are rejected wherever a statement or a term starts.
@@ -38,7 +42,7 @@ fn describe(t: &Tok) -> String {
 
 pub fn parse(file: &str, src: &str, kind: FileKind) -> Result<File, Diag> {
     let toks = lex(file, src)?;
-    Parser { file, toks, pos: 0, kind }.file()
+    Parser { file, toks, pos: 0, kind, depth: 0 }.file()
 }
 
 struct Parser<'a> {
@@ -46,6 +50,7 @@ struct Parser<'a> {
     toks: Vec<Token>,
     pos: usize,
     kind: FileKind,
+    depth: usize,
 }
 
 impl Parser<'_> {
@@ -71,6 +76,26 @@ impl Parser<'_> {
 
     fn err<T>(&self, span: Span, msg: impl Into<String>) -> R<T> {
         Err(Diag::new(self.file, span, msg))
+    }
+
+    /// Runs `f` one nesting level deeper, failing past `MAX_DEPTH`.
+    fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> R<T>) -> R<T> {
+        if self.depth >= MAX_DEPTH {
+            return self.err(self.span(), format!("nesting is too deep (limit {MAX_DEPTH})"));
+        }
+        self.depth += 1;
+        let r = f(self);
+        self.depth -= 1;
+        r
+    }
+
+    /// Counts one more operator in a chain, failing past `MAX_CHAIN`.
+    fn chain(&self, n: &mut usize) -> R<()> {
+        *n += 1;
+        if *n > MAX_CHAIN {
+            return self.err(self.span(), format!("expression is too long (limit {MAX_CHAIN})"));
+        }
+        Ok(())
     }
 
     fn is_punct(&self, p: &str) -> bool {
@@ -289,6 +314,10 @@ impl Parser<'_> {
     }
 
     fn ty(&mut self) -> R<Type> {
+        self.nested(Self::ty_union)
+    }
+
+    fn ty_union(&mut self) -> R<Type> {
         let mut alts = vec![self.ty_atom()?];
         while self.eat_punct("|") {
             alts.push(self.ty_atom()?);
@@ -332,6 +361,10 @@ impl Parser<'_> {
     // ---- statements ----
 
     fn block(&mut self) -> R<Vec<Stmt>> {
+        self.nested(Self::block_body)
+    }
+
+    fn block_body(&mut self) -> R<Vec<Stmt>> {
         self.expect_punct("{")?;
         let mut out = Vec::new();
         while !self.is_punct("}") {
@@ -467,6 +500,10 @@ impl Parser<'_> {
     // ---- expressions ----
 
     fn expr(&mut self) -> R<Expr> {
+        self.nested(Self::comparison)
+    }
+
+    fn comparison(&mut self) -> R<Expr> {
         let left = self.additive()?;
         let op = if self.is_punct("==") {
             BinOp::NumEq
@@ -485,6 +522,7 @@ impl Parser<'_> {
 
     fn additive(&mut self) -> R<Expr> {
         let mut left = self.multiplicative()?;
+        let mut n = 0;
         loop {
             let op = if self.is_punct("+") {
                 BinOp::Add
@@ -495,6 +533,7 @@ impl Parser<'_> {
             } else {
                 return Ok(left);
             };
+            self.chain(&mut n)?;
             self.advance();
             let right = self.multiplicative()?;
             left = bin(op, left, right);
@@ -503,7 +542,10 @@ impl Parser<'_> {
 
     fn multiplicative(&mut self) -> R<Expr> {
         let mut left = self.unary()?;
-        while self.eat_punct("*") {
+        let mut n = 0;
+        while self.is_punct("*") {
+            self.chain(&mut n)?;
+            self.advance();
             let right = self.unary()?;
             left = bin(BinOp::Mul, left, right);
         }
@@ -513,7 +555,7 @@ impl Parser<'_> {
     fn unary(&mut self) -> R<Expr> {
         if self.is_punct("-") {
             let span = self.advance().span;
-            let e = self.unary()?;
+            let e = self.nested(Self::unary)?;
             return Ok(Expr { kind: ExprKind::Neg(Box::new(e)), span });
         }
         self.postfix()
@@ -521,7 +563,9 @@ impl Parser<'_> {
 
     fn postfix(&mut self) -> R<Expr> {
         let mut e = self.primary()?;
+        let mut n = 0;
         while self.is_punct("->") {
+            self.chain(&mut n)?;
             let arrow = self.advance().span;
             let span = e.span;
             match self.tok().clone() {
@@ -759,6 +803,14 @@ mod tests {
         assert_eq!(init("my Any $v = Point->new(x => 1)->move(x => 2)->x;"), "(((Point->new)->move)->x)");
         assert_eq!(init("my Any $v = $self->{at}->x();"), "(($self->{at})->x)");
         assert_eq!(init("my Any $v = Math::add(1, 2);"), "(call Math::add)");
+    }
+
+    #[test]
+    fn bounds_nesting_and_chains() {
+        let e = |src: String| parse("t.tpr", &src, FileKind::Script).unwrap_err().msg;
+        assert_eq!(e(format!("my Int $v = {}1{};", "(".repeat(200), ")".repeat(200))), "nesting is too deep (limit 64)");
+        assert_eq!(e(format!("my Int $v = 1{};", " + 1".repeat(300))), "expression is too long (limit 256)");
+        assert!(parse("t.tpr", &format!("my Int $v = {}1{};", "(".repeat(63), ")".repeat(63)), FileKind::Script).is_ok());
     }
 
     #[test]

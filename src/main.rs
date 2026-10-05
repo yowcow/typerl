@@ -15,7 +15,20 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage: typerl build <file.tpm|file.tpr>...";
 
+/// The compile pipeline recurses over the AST; the parser bounds its height, and this big stack
+/// gives the checker, generator and drop glue plenty of headroom over that bound.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(run)
+        .expect("spawn compiler thread")
+        .join()
+        .unwrap_or(ExitCode::from(101))
+}
+
+fn run() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 2 || args[0] != "build" {
         eprintln!("{USAGE}");
