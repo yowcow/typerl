@@ -1,0 +1,5 @@
+/target
+*.pm
+*.pl
+!tests/**/*.pm
+!tests/**/*.pl
