@@ -280,3 +280,23 @@ my $eh = {};
 "#
     );
 }
+
+#[test]
+fn negated_call_is_parenthesized_so_perl_does_not_read_a_file_test() {
+    let out = script("sub f(Int $x) -> Int {\n    return $x;\n}\n\nmy Int $y = -f(3);\n");
+    assert_ok(&out);
+    assert_eq!(
+        read_output(&out, "a.tpr"),
+        r#"#!/usr/bin/env perl
+use strict;
+use warnings;
+
+sub f {
+    my ($x) = @_;
+    return $x;
+}
+
+my $y = -(f(3));
+"#
+    );
+}

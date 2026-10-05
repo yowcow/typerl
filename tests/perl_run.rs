@@ -42,3 +42,16 @@ fn to_int_rejects_non_integer_at_runtime() {
     assert!(out.stderr.contains("did not pass type constraint"), "{}", out.stderr);
     assert!(!out.stdout.contains("unreachable"));
 }
+
+#[test]
+fn negated_single_letter_call_is_negation_not_file_test() {
+    let dir = tmpdir();
+    write(
+        &dir,
+        "neg.tpr",
+        "sub f(Int $x) -> Int {\n    return $x;\n}\n\nmy Int $y = -f(3);\nif ($y == -3) {\n} else {\n    die \"file test\";\n}\n",
+    );
+    assert_ok(&run_typerl(&dir, &["build", "neg.tpr"]));
+    let out = perl(&dir, "neg.pl");
+    assert_eq!(out.code, 0, "stderr:\n{}", out.stderr);
+}

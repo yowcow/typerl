@@ -15,9 +15,11 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage: typerl build <file.tpm|file.tpr>...";
 
-/// The compile pipeline recurses over the AST; the parser bounds its height, and this big stack
-/// gives the checker, generator and drop glue plenty of headroom over that bound.
-const STACK_SIZE: usize = 256 * 1024 * 1024;
+/// The compile pipeline recurses over the AST; the parser bounds its height (MAX_DEPTH 64 x
+/// MAX_CHAIN 256 reaches ~48k nested expressions), and this big stack gives the checker,
+/// generator and drop glue headroom over that bound. Measured: a debug build needs ~200 MiB for
+/// that worst case, a release build ~45 MiB; only touched pages are committed.
+const STACK_SIZE: usize = 512 * 1024 * 1024;
 
 fn main() -> ExitCode {
     std::thread::Builder::new()
