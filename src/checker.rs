@@ -11,6 +11,9 @@ pub struct Facts {
 
 type R<T> = Result<T, Diag>;
 
+// Test-only + non-Object helper retained: runtime paths use loader-aware
+// `assignable_ctx` (handles Object/interface subtyping); kept for unit tests.
+#[allow(dead_code)]
 pub fn assignable(from: &Type, to: &Type) -> bool {
     use Type::*;
     match (from, to) {
