@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
@@ -53,6 +57,7 @@ jobs:
           name: typerl-${{ matrix.target }}
           path: typerl-${{ matrix.target }}
           if-no-files-found: error
+          retention-days: 7
 
   release:
     needs: build
