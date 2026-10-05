@@ -388,21 +388,114 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    // Part B replaces these four with the real implementations.
-    fn is_legacy_class(&mut self, _ty: &Type) -> R<bool> {
-        Ok(false)
+    /// Declared type is a class that is `use`d, not this module, and has no .tpm.
+    fn is_legacy_class(&mut self, ty: &Type) -> R<bool> {
+        let Type::Object(c) = ty else { return Ok(false) };
+        if self.is_module() && *c == self.own.package {
+            return Ok(false);
+        }
+        Ok(self.known.contains(c) && self.loader.get(c)?.is_none())
     }
-    fn class_call(&mut self, _c: &str, _m: &str, _a: &Args, span: Span) -> R<Type> {
-        self.err(span, "objects are not implemented yet")
+
+    /// Signature of a class written by name in this file. `None` = legacy Perl.
+    fn class_sig(&mut self, class: &str, span: Span) -> R<Option<Rc<ModuleSig>>> {
+        if self.is_module() && class == self.own.package {
+            return Ok(Some(self.own.clone()));
+        }
+        if !self.known.contains(class) {
+            return self.err(span, format!("package `{class}` is not used (add `use {class};`)"));
+        }
+        self.loader.get(class)
     }
-    fn method_call(&mut self, _r: &Expr, _m: &str, _a: &Args, span: Span) -> R<Type> {
-        self.err(span, "objects are not implemented yet")
+
+    fn class_call(&mut self, class: &str, method: &str, args: &Args, span: Span) -> R<Type> {
+        let Some(m) = self.class_sig(class, span)? else {
+            self.legacy_args(args)?;
+            return Ok(Type::Any);
+        };
+        let Some(s) = m.subs.get(method) else { return self.err(span, format!("{class} has no method `{method}`")) };
+        if s.kind != SubKind::Constructor {
+            return self.err(span, format!("{class}::{method} is not a constructor (its first parameter is not `Class $class`)"));
+        }
+        self.args(s, &format!("{class}::{method}"), args, span)?;
+        Ok(s.ret.clone())
     }
-    fn field(&mut self, _r: &Expr, _n: &str, span: Span) -> R<Type> {
-        self.err(span, "objects are not implemented yet")
+
+    fn method_call(&mut self, recv: &Expr, method: &str, args: &Args, span: Span) -> R<Type> {
+        let rt = self.expr(recv, None)?;
+        let Type::Object(c) = &rt else {
+            if rt == Type::Any {
+                return self.err(span, "cannot call a method on Any (narrow it first)");
+            }
+            return self.err(span, format!("cannot call a method on {rt}"));
+        };
+        // Receiver types come from checked declarations, so no `use` is required here.
+        let m = if self.is_module() && *c == self.own.package { Some(self.own.clone()) } else { self.loader.get(c)? };
+        let Some(m) = m else {
+            self.legacy_args(args)?;
+            return Ok(Type::Any);
+        };
+        let Some(s) = m.subs.get(method) else { return self.err(span, format!("{c} has no method `{method}`")) };
+        match s.kind {
+            SubKind::Constructor => self.err(span, format!("constructor `{method}` must be called on the class: `{c}->{method}(...)`")),
+            SubKind::Function => self.err(span, format!("`{method}` is a function, not a method; call it as `{c}::{method}(...)`")),
+            SubKind::Method => {
+                self.args(s, &format!("{c}::{method}"), args, span)?;
+                Ok(s.ret.clone())
+            }
+        }
     }
+
+    fn field(&mut self, recv: &Expr, name: &str, span: Span) -> R<Type> {
+        let rt = self.expr(recv, None)?;
+        match &rt {
+            Type::HashRef(_) => self.err(span, "element access on HashRef is not supported"),
+            Type::Object(c) if self.is_module() && *c == self.own.package => {
+                let in_method = self
+                    .current
+                    .map_or(false, |s| s.params.first().map_or(false, |p| p.name == "self" || p.name == "class"));
+                if !in_method {
+                    return self.err(span, format!("fields of {c} can only be read in a method of {c}"));
+                }
+                match self.own.fields.iter().find(|(n, _)| n == name) {
+                    Some((_, t)) => Ok(t.clone()),
+                    None => self.err(span, format!("unknown field `{name}` on {c}")),
+                }
+            }
+            Type::Object(c) => self.err(span, format!("fields of {c} are private to package {c}")),
+            t => self.err(span, format!("cannot access a field of {t}")),
+        }
+    }
+
+    /// `return bless({...}, $class);` inside a constructor.
     fn bless(&mut self, e: &Expr) -> R<()> {
-        self.err(e.span, "objects are not implemented yet")
+        let ExprKind::Bless { fields, target } = &e.kind else { unreachable!("caller checks for Bless") };
+        let is_ctor = self.is_module()
+            && self.current.map_or(false, |s| s.params.first().map_or(false, |p| p.name == "class" && p.ty == Type::Class));
+        if !is_ctor {
+            return self.err(e.span, "bless is only allowed in a constructor (first parameter `Class $class`)");
+        }
+        if !matches!(&target.kind, ExprKind::Var(v) if v == "class") {
+            return self.err(target.span, "bless target must be the constructor's `$class`");
+        }
+        let own = self.own.clone();
+        let mut seen = HashSet::new();
+        for pr in fields {
+            if !seen.insert(pr.key.as_str()) {
+                return self.err(pr.span, format!("duplicate key `{}`", pr.key));
+            }
+            let Some((_, fty)) = own.fields.iter().find(|(n, _)| *n == pr.key) else {
+                return self.err(pr.span, format!("unknown field `{}` in bless for {}", pr.key, own.package));
+            };
+            let got = self.expr(&pr.value, Some(fty))?;
+            self.expect_assignable(&got, fty, pr.value.span, &format!("field `{}` of {}: ", pr.key, own.package))?;
+        }
+        for (n, t) in &own.fields {
+            if !seen.contains(n.as_str()) && !matches!(t, Type::Optional(_)) {
+                return self.err(e.span, format!("missing field `{n}` in bless for {}", own.package));
+            }
+        }
+        Ok(())
     }
 }
 
