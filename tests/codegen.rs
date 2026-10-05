@@ -300,3 +300,24 @@ my $y = -(f(3));
 "#
     );
 }
+
+#[test]
+fn negated_method_chain_is_parenthesized_so_perl_does_not_read_a_file_test() {
+    let out = build(
+        &[
+            (
+                "C.tpm",
+                "package C;\n\nfield x: Int;\n\nsub new(Class $class, :Int $x) -> C {\n    return bless({ x => $x }, $class);\n}\n\nsub x(C $self) -> Int {\n    return $self->{x};\n}\n",
+            ),
+            (
+                "a.tpr",
+                "use C;\n\nsub f(Int $n) -> C {\n    return C->new(x => $n);\n}\n\nmy Int $a = -f(3)->x;\nmy Int $b = -C->new(x => 4)->x();\n",
+            ),
+        ],
+        &["C.tpm", "a.tpr"],
+    );
+    assert_ok(&out);
+    let got = read_output(&out, "a.tpr");
+    assert!(got.contains("my $a = -(f(3)->x());"), "{got}");
+    assert!(got.contains("my $b = -(C->new(x => 4)->x());"), "{got}");
+}

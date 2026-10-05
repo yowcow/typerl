@@ -247,11 +247,12 @@ impl Gen<'_> {
             ExprKind::Hash(pairs) => self.hash(pairs),
             ExprKind::Neg(x) => {
                 let s = self.expr(x);
-                // `-f(3)` is a file test in Perl for single-letter `f`, so a call is parenthesized too.
-                if matches!(x.kind, ExprKind::Neg(_) | ExprKind::Binary(..) | ExprKind::Call { .. }) {
-                    format!("-({s})")
-                } else {
+                // `-f(3)` / `-C->new(..)->x` read as a file test in Perl for a single-letter root,
+                // so everything except a plain int or variable is parenthesized.
+                if matches!(x.kind, ExprKind::Int(_) | ExprKind::Var(_)) {
                     format!("-{s}")
+                } else {
+                    format!("-({s})")
                 }
             }
             ExprKind::Binary(op, l, r) => {

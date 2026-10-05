@@ -55,3 +55,21 @@ fn negated_single_letter_call_is_negation_not_file_test() {
     let out = perl(&dir, "neg.pl");
     assert_eq!(out.code, 0, "stderr:\n{}", out.stderr);
 }
+
+#[test]
+fn negated_method_chain_rooted_at_file_test_letter_is_negation_not_file_test() {
+    let dir = tmpdir();
+    write(
+        &dir,
+        "C.tpm",
+        "package C;\n\nfield x: Int;\n\nsub new(Class $class, :Int $x) -> C {\n    return bless({ x => $x }, $class);\n}\n\nsub x(C $self) -> Int {\n    return $self->{x};\n}\n",
+    );
+    write(
+        &dir,
+        "neg.tpr",
+        "use C;\n\nsub f(Int $n) -> C {\n    return C->new(x => $n);\n}\n\nmy Int $a = -f(3)->x;\nmy Int $b = -C->new(x => 4)->x();\nif ($a == -3) {\n} else {\n    die \"file test a\";\n}\nif ($b == -4) {\n} else {\n    die \"file test b\";\n}\n",
+    );
+    assert_ok(&run_typerl(&dir, &["build", "C.tpm", "neg.tpr"]));
+    let out = perl(&dir, "neg.pl");
+    assert_eq!(out.code, 0, "stderr:\n{}", out.stderr);
+}
