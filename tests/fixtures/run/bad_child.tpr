@@ -1,0 +1,3 @@
+use Legacy::Util;
+my Legacy::Util $u = Legacy::Util::make_child();
+Legacy::Util::emit("unreachable");

@@ -1,0 +1,3 @@
+use Legacy::Util;
+my Int $n = to_int(Legacy::Util::not_a_number());
+Legacy::Util::emit("unreachable");

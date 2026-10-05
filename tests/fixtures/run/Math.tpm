@@ -1,0 +1,5 @@
+package Math;
+
+sub add(Int $x, Int $y) -> Int {
+    return $x + $y;
+}
