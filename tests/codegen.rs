@@ -284,6 +284,37 @@ my $y = -(f(3));
 }
 
 #[test]
+fn interface_module_emits_package_only() {
+    let out = build(
+        &[("Shape.tpm", "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n")],
+        &["Shape.tpm"],
+    );
+    assert_ok(&out);
+    assert_eq!(
+        read_output(&out, "Shape.tpm"),
+        "package Shape;\nuse strict;\nuse warnings;\n\n1;\n"
+    );
+}
+
+#[test]
+fn interface_param_emits_has_methods_check() {
+    let out = build(
+        &[
+            ("Shape.tpm", "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n"),
+            (
+                "Use.tpm",
+                "package Use;\nuse Shape;\nsub f(Shape $s) -> Int {\n    return $s->area;\n}\n",
+            ),
+        ],
+        &["Use.tpm"],
+    );
+    assert_ok(&out);
+    let text = read_output(&out, "Use.tpm");
+    assert!(text.contains("use Types::Standard qw(HasMethods);"), "{text}");
+    assert!(text.contains("(HasMethods[\"area\"])->assert_valid($s);"), "{text}");
+}
+
+#[test]
 fn negated_method_chain_is_parenthesized_so_perl_does_not_read_a_file_test() {
     let out = build(
         &[
