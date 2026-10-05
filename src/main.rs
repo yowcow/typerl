@@ -5,6 +5,7 @@ mod checker;
 mod codegen;
 mod diag;
 mod lexer;
+mod modules;
 mod parser;
 
 use ast::FileKind;
