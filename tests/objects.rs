@@ -29,7 +29,14 @@ sub x(Pin $self) -> Int {
 "#;
 
 fn with_point(main: &str) -> Out {
-    build(&[("Point.tpm", POINT), ("Point/Label.tpm", LABEL), ("a.tpr", main)], &["a.tpr"])
+    build(
+        &[
+            ("Point.tpm", POINT),
+            ("Point/Label.tpm", LABEL),
+            ("a.tpr", main),
+        ],
+        &["a.tpr"],
+    )
 }
 
 /// Point.tpm whose constructor body (line 5) is `body`.
@@ -53,7 +60,9 @@ fn point_module_from_spec_typechecks() {
 
 #[test]
 fn constructor_call_with_named_args() {
-    assert_ok(&with_point("use Point;\nmy Point $p = Point->new(x => 1, y => 2);\nmy Int $x = $p->x();\n"));
+    assert_ok(&with_point(
+        "use Point;\nmy Point $p = Point->new(x => 1, y => 2);\nmy Int $x = $p->x();\n",
+    ));
 }
 
 #[test]
@@ -101,7 +110,10 @@ fn rejects_field_read_in_function() {
 
 #[test]
 fn delegation_field_accepted() {
-    assert_ok(&build(&[("Point.tpm", POINT), ("Pin.tpm", PIN)], &["Pin.tpm"]));
+    assert_ok(&build(
+        &[("Point.tpm", POINT), ("Pin.tpm", PIN)],
+        &["Pin.tpm"],
+    ));
 }
 
 #[test]
@@ -122,7 +134,9 @@ fn point_label_signature_is_checked() {
 
 #[test]
 fn point_label_without_file_is_legacy_perl() {
-    assert_ok(&script("use Point::Label;\nmy Any $l = Point::Label->new(text => 1);\n"));
+    assert_ok(&script(
+        "use Point::Label;\nmy Any $l = Point::Label->new(text => 1);\n",
+    ));
 }
 
 #[test]
@@ -136,32 +150,56 @@ fn legacy_class_annotation_narrows_any() {
 
 #[test]
 fn rejects_bless_with_string_target() {
-    assert_err(&ctor("return bless({ x => $x }, \"Point\");"), "Point.tpm:5:", "bless target must be the constructor's `$class`");
+    assert_err(
+        &ctor("return bless({ x => $x }, \"Point\");"),
+        "Point.tpm:5:",
+        "bless target must be the constructor's `$class`",
+    );
 }
 
 #[test]
 fn rejects_bless_with_arbitrary_variable() {
-    assert_err(&ctor("return bless({ x => $x }, $c);"), "Point.tpm:5:", "bless target must be the constructor's `$class`");
+    assert_err(
+        &ctor("return bless({ x => $x }, $c);"),
+        "Point.tpm:5:",
+        "bless target must be the constructor's `$class`",
+    );
 }
 
 #[test]
 fn rejects_bless_undeclared_key() {
-    assert_err(&ctor("return bless({ x => $x, z => 1 }, $class);"), "Point.tpm:5:", "unknown field `z` in bless for Point");
+    assert_err(
+        &ctor("return bless({ x => $x, z => 1 }, $class);"),
+        "Point.tpm:5:",
+        "unknown field `z` in bless for Point",
+    );
 }
 
 #[test]
 fn rejects_bless_missing_required_field() {
-    assert_err(&ctor("return bless({ label => $c }, $class);"), "Point.tpm:5:", "missing field `x` in bless for Point");
+    assert_err(
+        &ctor("return bless({ label => $c }, $class);"),
+        "Point.tpm:5:",
+        "missing field `x` in bless for Point",
+    );
 }
 
 #[test]
 fn rejects_bless_field_type_mismatch() {
-    assert_err(&ctor("return bless({ x => $c }, $class);"), "Point.tpm:5:", "field `x` of Point: type mismatch: expected Int, found Str");
+    assert_err(
+        &ctor("return bless({ x => $c }, $class);"),
+        "Point.tpm:5:",
+        "field `x` of Point: type mismatch: expected Int, found Str",
+    );
 }
 
 #[test]
 fn rejects_bless_duplicate_key() {
-    assert_err(&ctor("return bless({ x => $x, x => $x }, $class);"), "Point.tpm:5:", "duplicate key `x`");
+    assert_err(
+        &ctor("return bless({ x => $x, x => $x }, $class);"),
+        "Point.tpm:5:",
+        "duplicate key `x`",
+    );
 }
 
 #[test]
@@ -175,20 +213,37 @@ fn rejects_bless_not_directly_returned() {
 
 #[test]
 fn rejects_class_value_misuse() {
-    assert_err(&ctor("my Any $k = $class;\n    return bless({ x => $x }, $class);"), "Point.tpm:5:", "found Class");
+    assert_err(
+        &ctor("my Any $k = $class;\n    return bless({ x => $x }, $class);"),
+        "Point.tpm:5:",
+        "found Class",
+    );
 }
 
 #[test]
 fn class_value_may_be_passed_to_runtime_checked_conversions() {
-    assert_ok(&ctor("my Str $k = to_str($class);\n    return bless({ x => $x }, $class);"));
+    assert_ok(&ctor(
+        "my Str $k = to_str($class);\n    return bless({ x => $x }, $class);",
+    ));
 }
 
 #[test]
 fn rejects_constructor_without_class_param() {
     let point = "package Point;\nfield x: Int;\nsub new(:Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n";
-    rejects_module("Point.tpm", point, "Point.tpm:4:", "bless is only allowed in a constructor");
+    rejects_module(
+        "Point.tpm",
+        point,
+        "Point.tpm:4:",
+        "bless is only allowed in a constructor",
+    );
     assert_err(
-        &build(&[("Point.tpm", point), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\n")], &["a.tpr"]),
+        &build(
+            &[
+                ("Point.tpm", point),
+                ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\n"),
+            ],
+            &["a.tpr"],
+        ),
         "a.tpr:2:",
         "Point::new is not a constructor",
     );
@@ -198,12 +253,20 @@ fn rejects_constructor_without_class_param() {
 
 #[test]
 fn rejects_named_unknown_key() {
-    assert_err(&with_point("use Point;\nmy Point $p = Point->new(x => 1, y => 2, z => 3);\n"), "a.tpr:2:", "unknown named argument `z` for Point::new");
+    assert_err(
+        &with_point("use Point;\nmy Point $p = Point->new(x => 1, y => 2, z => 3);\n"),
+        "a.tpr:2:",
+        "unknown named argument `z` for Point::new",
+    );
 }
 
 #[test]
 fn rejects_named_missing_required() {
-    assert_err(&with_point("use Point;\nmy Point $p = Point->new(x => 1);\n"), "a.tpr:2:", "missing required named argument `y` for Point::new");
+    assert_err(
+        &with_point("use Point;\nmy Point $p = Point->new(x => 1);\n"),
+        "a.tpr:2:",
+        "missing required named argument `y` for Point::new",
+    );
 }
 
 #[test]
@@ -217,12 +280,20 @@ fn rejects_named_type_mismatch() {
 
 #[test]
 fn rejects_named_duplicate_key() {
-    assert_err(&with_point("use Point;\nmy Point $p = Point->new(x => 1, x => 1, y => 2);\n"), "a.tpr:2:", "duplicate named argument `x`");
+    assert_err(
+        &with_point("use Point;\nmy Point $p = Point->new(x => 1, x => 1, y => 2);\n"),
+        "a.tpr:2:",
+        "duplicate named argument `x`",
+    );
 }
 
 #[test]
 fn rejects_positional_constructor_call() {
-    assert_err(&with_point("use Point;\nmy Point $p = Point->new(1, 2);\n"), "a.tpr:2:", "Point::new takes named arguments");
+    assert_err(
+        &with_point("use Point;\nmy Point $p = Point->new(1, 2);\n"),
+        "a.tpr:2:",
+        "Point::new takes named arguments",
+    );
 }
 
 #[test]
@@ -238,13 +309,19 @@ fn rejects_class_passed_as_named_arg() {
 
 #[test]
 fn rejects_undeclared_field_read() {
-    assert_err(&getter("return $self->{z};"), "Point.tpm:7:", "unknown field `z` on Point");
+    assert_err(
+        &getter("return $self->{z};"),
+        "Point.tpm:7:",
+        "unknown field `z` on Point",
+    );
 }
 
 #[test]
 fn rejects_field_read_outside_package() {
     assert_err(
-        &with_point("use Point;\nmy Point $p = Point->new(x => 1, y => 2);\nmy Int $x = $p->{x};\n"),
+        &with_point(
+            "use Point;\nmy Point $p = Point->new(x => 1, y => 2);\nmy Int $x = $p->{x};\n",
+        ),
         "a.tpr:3:",
         "fields of Point are private to package Point",
     );
@@ -261,14 +338,24 @@ fn rejects_field_read_on_legacy_object() {
 
 #[test]
 fn rejects_hashref_element_access() {
-    rejects("my HashRef[Int] $h = { a => 1 };\nmy Int $v = $h->{a};\n", "a.tpr:2:", "element access on HashRef is not supported");
+    rejects(
+        "my HashRef[Int] $h = { a => 1 };\nmy Int $v = $h->{a};\n",
+        "a.tpr:2:",
+        "element access on HashRef is not supported",
+    );
 }
 
 // ---- rejected: methods ----
 
 #[test]
 fn rejects_unknown_method() {
-    assert_err(&with_point("use Point;\nmy Point $p = Point->new(x => 1, y => 2);\nmy Int $v = $p->nope();\n"), "a.tpr:3:", "Point has no method `nope`");
+    assert_err(
+        &with_point(
+            "use Point;\nmy Point $p = Point->new(x => 1, y => 2);\nmy Int $v = $p->nope();\n",
+        ),
+        "a.tpr:3:",
+        "Point has no method `nope`",
+    );
 }
 
 #[test]
@@ -282,14 +369,27 @@ fn rejects_constructor_called_on_instance() {
 
 #[test]
 fn rejects_method_called_on_class() {
-    assert_err(&with_point("use Point;\nmy Int $v = Point->x();\n"), "a.tpr:2:", "Point::x is not a constructor");
+    assert_err(
+        &with_point("use Point;\nmy Int $v = Point->x();\n"),
+        "a.tpr:2:",
+        "Point::x is not a constructor",
+    );
 }
 
 #[test]
 fn rejects_function_called_as_method() {
     let point = "package Point;\nfield x: Int;\nsub new(Class $class, :Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\nsub origin() -> Point {\n    return Point->new(x => 0);\n}\n";
     assert_err(
-        &build(&[("Point.tpm", point), ("a.tpr", "use Point;\nmy Point $p = Point::origin();\nmy Point $q = $p->origin();\n")], &["a.tpr"]),
+        &build(
+            &[
+                ("Point.tpm", point),
+                (
+                    "a.tpr",
+                    "use Point;\nmy Point $p = Point::origin();\nmy Point $q = $p->origin();\n",
+                ),
+            ],
+            &["a.tpr"],
+        ),
         "a.tpr:3:",
         "`origin` is a function, not a method",
     );
@@ -306,12 +406,20 @@ fn rejects_other_class_where_class_expected() {
 
 #[test]
 fn rejects_method_call_on_any() {
-    rejects("use Legacy::Util;\nmy Any $v = Legacy::Util::name();\nmy Any $w = $v->foo();\n", "a.tpr:3:", "cannot call a method on Any");
+    rejects(
+        "use Legacy::Util;\nmy Any $v = Legacy::Util::name();\nmy Any $w = $v->foo();\n",
+        "a.tpr:3:",
+        "cannot call a method on Any",
+    );
 }
 
 #[test]
 fn rejects_method_call_on_primitive() {
-    rejects("my Int $n = 1;\nmy Any $v = $n->foo();\n", "a.tpr:2:", "cannot call a method on Int");
+    rejects(
+        "my Int $n = 1;\nmy Any $v = $n->foo();\n",
+        "a.tpr:2:",
+        "cannot call a method on Int",
+    );
 }
 
 #[test]
@@ -334,32 +442,61 @@ fn rejects_legacy_method_result_as_str() {
 
 #[test]
 fn rejects_class_call_on_unused_package() {
-    rejects("my Any $v = Foo->new();\n", "a.tpr:1:", "package `Foo` is not used");
+    rejects(
+        "my Any $v = Foo->new();\n",
+        "a.tpr:1:",
+        "package `Foo` is not used",
+    );
 }
 
 #[test]
 fn constructor_accepts_empty_literal_for_optional_arrayref_field() {
     let point = "package Point;\n\nfield x: Int;\nfield tags: Optional[ArrayRef[Str]];\n\nsub new(Class $class, :Int $x, :Optional[ArrayRef[Str]] $tags) -> Point {\n    return bless({ x => $x, tags => $tags }, $class);\n}\n";
-    assert_ok(&build(&[("Point.tpm", point), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1, tags => []);\n")], &["a.tpr"]));
+    assert_ok(&build(
+        &[
+            ("Point.tpm", point),
+            (
+                "a.tpr",
+                "use Point;\nmy Point $p = Point->new(x => 1, tags => []);\n",
+            ),
+        ],
+        &["a.tpr"],
+    ));
 }
 
 // ---- Task 12: qualified method names are outside the bare-method syntax ----
 
 fn rejects_qualified_method(files: &[(&str, &str)], prefix: &str) {
-    assert_err(&build(files, &["a.tpr"]), prefix, "qualified method names are not supported");
+    assert_err(
+        &build(files, &["a.tpr"]),
+        prefix,
+        "qualified method names are not supported",
+    );
 }
 
 #[test]
 fn rejects_qualified_method_name_on_instance() {
     rejects_qualified_method(
-        &[("Point.tpm", MINI_POINT), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\nmy Int $n = $p->Point::x();\n")],
+        &[
+            ("Point.tpm", MINI_POINT),
+            (
+                "a.tpr",
+                "use Point;\nmy Point $p = Point->new(x => 1);\nmy Int $n = $p->Point::x();\n",
+            ),
+        ],
         "a.tpr:3:",
     );
 }
 
 #[test]
 fn rejects_qualified_method_name_on_class() {
-    rejects_qualified_method(&[("a.tpr", "use Legacy::Util;\nLegacy::Util->Other::emit(1);\n")], "a.tpr:2:");
+    rejects_qualified_method(
+        &[(
+            "a.tpr",
+            "use Legacy::Util;\nLegacy::Util->Other::emit(1);\n",
+        )],
+        "a.tpr:2:",
+    );
 }
 
 #[test]

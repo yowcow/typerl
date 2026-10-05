@@ -137,8 +137,15 @@ impl<'a> Checker<'a> {
         if assignable(got, want) {
             return Ok(());
         }
-        let hint = if *got == Type::Any { " (narrow Any with to_int, to_str, to_bool or a legacy class annotation)" } else { "" };
-        self.err(span, format!("{ctx}type mismatch: expected {want}, found {got}{hint}"))
+        let hint = if *got == Type::Any {
+            " (narrow Any with to_int, to_str, to_bool or a legacy class annotation)"
+        } else {
+            ""
+        };
+        self.err(
+            span,
+            format!("{ctx}type mismatch: expected {want}, found {got}{hint}"),
+        )
     }
 
     fn sub(&mut self, s: &'a Sub) -> R<()> {
@@ -152,7 +159,10 @@ impl<'a> Checker<'a> {
             self.stmt(st)?;
         }
         if s.ret != Type::Void && !terminates(&s.body) {
-            return self.err(s.span, format!("sub `{}` must end with `return` on every path", s.name));
+            return self.err(
+                s.span,
+                format!("sub `{}` must end with `return` on every path", s.name),
+            );
         }
         Ok(())
     }
@@ -168,7 +178,12 @@ impl<'a> Checker<'a> {
 
     fn stmt(&mut self, st: &Stmt) -> R<()> {
         match st {
-            Stmt::My { ty, name, init, span } => {
+            Stmt::My {
+                ty,
+                name,
+                init,
+                span,
+            } => {
                 self.check_decl_type(ty, *span)?;
                 let got = self.expr(init, Some(ty))?;
                 if got == Type::Any && self.is_legacy_class(ty)? {
@@ -191,11 +206,20 @@ impl<'a> Checker<'a> {
                 }
                 Ok(())
             }
-            Stmt::Foreach { ty, var, list, body, span } => {
+            Stmt::Foreach {
+                ty,
+                var,
+                list,
+                body,
+                span,
+            } => {
                 self.check_decl_type(ty, *span)?;
                 let lt = self.expr(list, Some(&Type::ArrayRef(Box::new(ty.clone()))))?;
                 let Type::ArrayRef(elem) = &lt else {
-                    return self.err(list.span, format!("foreach requires ArrayRef[T], found {lt}"));
+                    return self.err(
+                        list.span,
+                        format!("foreach requires ArrayRef[T], found {lt}"),
+                    );
                 };
                 self.expect_assignable(elem, ty, list.span, "")?;
                 self.scopes.push(HashMap::new());
@@ -207,7 +231,9 @@ impl<'a> Checker<'a> {
                 Ok(())
             }
             Stmt::Return { value, span } => {
-                let Some(sub) = self.current else { return self.err(*span, "return outside a sub") };
+                let Some(sub) = self.current else {
+                    return self.err(*span, "return outside a sub");
+                };
                 match (value, &sub.ret) {
                     (None, Type::Void) => Ok(()),
                     (None, t) => self.err(*span, format!("must return a value of type {t}")),
@@ -252,7 +278,14 @@ impl<'a> Checker<'a> {
                         match self.lookup(n) {
                             None => return self.err(*sp, format!("undeclared variable `${n}`")),
                             Some(Str) => {}
-                            Some(t) => return self.err(*sp, format!("only Str variables can be interpolated; `${n}` is {t}")),
+                            Some(t) => {
+                                return self.err(
+                                    *sp,
+                                    format!(
+                                        "only Str variables can be interpolated; `${n}` is {t}"
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
@@ -279,7 +312,10 @@ impl<'a> Checker<'a> {
             ExprKind::Neg(x) => {
                 let t = self.expr(x, Some(&Int))?;
                 if t != Int {
-                    return self.err(e.span, format!("unary `-` requires an Int operand, found {t}"));
+                    return self.err(
+                        e.span,
+                        format!("unary `-` requires an Int operand, found {t}"),
+                    );
                 }
                 Ok(Int)
             }
@@ -293,20 +329,44 @@ impl<'a> Checker<'a> {
                 let lt = self.expr(l, Some(&want))?;
                 let rt = self.expr(r, Some(&want))?;
                 if lt != want || rt != want {
-                    return self.err(e.span, format!("operator `{}` requires {want} operands, found {lt} and {rt}", op.symbol()));
+                    return self.err(
+                        e.span,
+                        format!(
+                            "operator `{}` requires {want} operands, found {lt} and {rt}",
+                            op.symbol()
+                        ),
+                    );
                 }
                 Ok(out)
             }
             ExprKind::Call { name, args } => self.call(name, args, e.span),
-            ExprKind::ClassCall { class, method, args } => self.class_call(class, method, args, e.span),
-            ExprKind::MethodCall { recv, method, args } => self.method_call(recv, method, args, e.span),
+            ExprKind::ClassCall {
+                class,
+                method,
+                args,
+            } => self.class_call(class, method, args, e.span),
+            ExprKind::MethodCall { recv, method, args } => {
+                self.method_call(recv, method, args, e.span)
+            }
             ExprKind::Field { recv, name } => self.field(recv, name, e.span),
             ExprKind::Bless { .. } => self.err(e.span, "bless must appear directly in `return`"),
         }
     }
 
-    fn literal(&mut self, values: &[&Expr], expected: Option<&Type>, span: Span, array: bool) -> R<Type> {
-        let wrap = |t: Type| if array { Type::ArrayRef(Box::new(t)) } else { Type::HashRef(Box::new(t)) };
+    fn literal(
+        &mut self,
+        values: &[&Expr],
+        expected: Option<&Type>,
+        span: Span,
+        array: bool,
+    ) -> R<Type> {
+        let wrap = |t: Type| {
+            if array {
+                Type::ArrayRef(Box::new(t))
+            } else {
+                Type::HashRef(Box::new(t))
+            }
+        };
         if let Some(t) = expected_elem(expected, array) {
             for v in values {
                 let got = self.expr(v, Some(&t))?;
@@ -314,11 +374,17 @@ impl<'a> Checker<'a> {
             }
             return Ok(wrap(t));
         }
-        let Some(first) = values.first() else { return self.err(span, "cannot infer the type of an empty literal") };
+        let Some(first) = values.first() else {
+            return self.err(span, "cannot infer the type of an empty literal");
+        };
         let t = self.expr(first, None)?;
         for v in &values[1..] {
             if self.expr(v, None)? != t {
-                let what = if array { "array literal elements" } else { "hash literal values" };
+                let what = if array {
+                    "array literal elements"
+                } else {
+                    "hash literal values"
+                };
                 return self.err(v.span, format!("{what} must all have the same type"));
             }
         }
@@ -329,7 +395,9 @@ impl<'a> Checker<'a> {
     fn legacy_call(&mut self, args: &Args) -> R<Type> {
         match args {
             Args::Positional(v) => v.iter().try_for_each(|e| self.expr(e, None).map(|_| ()))?,
-            Args::Named(p) => p.iter().try_for_each(|p| self.expr(&p.value, None).map(|_| ()))?,
+            Args::Named(p) => p
+                .iter()
+                .try_for_each(|p| self.expr(&p.value, None).map(|_| ()))?,
         }
         Ok(Type::Any)
     }
@@ -355,11 +423,22 @@ impl<'a> Checker<'a> {
                 None => return self.legacy_call(args),
             },
         };
-        let Some(s) = m.subs.get(fname) else { return self.err(span, format!("unknown function `{name}`")) };
+        let Some(s) = m.subs.get(fname) else {
+            return self.err(span, format!("unknown function `{name}`"));
+        };
         let qual = format!("{}::{fname}", m.package);
         match s.kind {
-            SubKind::Constructor => self.err(span, format!("{qual} is a constructor; call it as `{}->{fname}(...)`", m.package)),
-            SubKind::Method => self.err(span, format!("{qual} is a method; call it as `$obj->{fname}(...)`")),
+            SubKind::Constructor => self.err(
+                span,
+                format!(
+                    "{qual} is a constructor; call it as `{}->{fname}(...)`",
+                    m.package
+                ),
+            ),
+            SubKind::Method => self.err(
+                span,
+                format!("{qual} is a method; call it as `$obj->{fname}(...)`"),
+            ),
             SubKind::Function => {
                 self.args(s, name, args, span)?;
                 Ok(s.ret.clone())
@@ -369,16 +448,35 @@ impl<'a> Checker<'a> {
 
     fn args(&mut self, sig: &SubSig, display: &str, args: &Args, span: Span) -> R<()> {
         match args {
-            Args::Positional(a) if sig.named && a.is_empty() => self.named_args(sig, display, &[], span),
-            Args::Positional(_) if sig.named => self.err(span, format!("{display} takes named arguments (name => value)")),
-            Args::Named(_) if !sig.named => self.err(span, format!("{display} takes positional arguments")),
+            Args::Positional(a) if sig.named && a.is_empty() => {
+                self.named_args(sig, display, &[], span)
+            }
+            Args::Positional(_) if sig.named => self.err(
+                span,
+                format!("{display} takes named arguments (name => value)"),
+            ),
+            Args::Named(_) if !sig.named => {
+                self.err(span, format!("{display} takes positional arguments"))
+            }
             Args::Positional(a) => {
                 if a.len() != sig.params.len() {
-                    return self.err(span, format!("{display} expects {} arguments, found {}", sig.params.len(), a.len()));
+                    return self.err(
+                        span,
+                        format!(
+                            "{display} expects {} arguments, found {}",
+                            sig.params.len(),
+                            a.len()
+                        ),
+                    );
                 }
                 for (i, (v, p)) in a.iter().zip(&sig.params).enumerate() {
                     let got = self.expr(v, Some(&p.ty))?;
-                    self.expect_assignable(&got, &p.ty, v.span, &format!("argument {} of {display}: ", i + 1))?;
+                    self.expect_assignable(
+                        &got,
+                        &p.ty,
+                        v.span,
+                        &format!("argument {} of {display}: ", i + 1),
+                    )?;
                 }
                 Ok(())
             }
@@ -393,14 +491,25 @@ impl<'a> Checker<'a> {
                 return self.err(pr.span, format!("duplicate named argument `{}`", pr.key));
             }
             let Some(p) = sig.params.iter().find(|p| p.name == pr.key) else {
-                return self.err(pr.span, format!("unknown named argument `{}` for {display}", pr.key));
+                return self.err(
+                    pr.span,
+                    format!("unknown named argument `{}` for {display}", pr.key),
+                );
             };
             let got = self.expr(&pr.value, Some(&p.ty))?;
-            self.expect_assignable(&got, &p.ty, pr.value.span, &format!("named argument `{}` of {display}: ", pr.key))?;
+            self.expect_assignable(
+                &got,
+                &p.ty,
+                pr.value.span,
+                &format!("named argument `{}` of {display}: ", pr.key),
+            )?;
         }
         for p in &sig.params {
             if !seen.contains(p.name.as_str()) && !matches!(p.ty, Type::Optional(_)) {
-                return self.err(span, format!("missing required named argument `{}` for {display}", p.name));
+                return self.err(
+                    span,
+                    format!("missing required named argument `{}` for {display}", p.name),
+                );
             }
         }
         Ok(())
@@ -408,7 +517,9 @@ impl<'a> Checker<'a> {
 
     /// Declared type is a class that is `use`d, not this module, and has no .tpm.
     fn is_legacy_class(&mut self, ty: &Type) -> R<bool> {
-        let Type::Object(c) = ty else { return Ok(false) };
+        let Type::Object(c) = ty else {
+            return Ok(false);
+        };
         Ok(self.known.contains(c) && self.sig_of(c)?.is_none())
     }
 
@@ -423,14 +534,21 @@ impl<'a> Checker<'a> {
     /// Signature of a class written by name in this file. `None` = legacy Perl.
     fn class_sig(&mut self, class: &str, span: Span) -> R<Option<Rc<ModuleSig>>> {
         if !self.known.contains(class) {
-            return self.err(span, format!("package `{class}` is not used (add `use {class};`)"));
+            return self.err(
+                span,
+                format!("package `{class}` is not used (add `use {class};`)"),
+            );
         }
         self.sig_of(class)
     }
 
     fn class_call(&mut self, class: &str, method: &str, args: &Args, span: Span) -> R<Type> {
-        let Some(m) = self.class_sig(class, span)? else { return self.legacy_call(args) };
-        let Some(s) = m.subs.get(method) else { return self.err(span, format!("{class} has no method `{method}`")) };
+        let Some(m) = self.class_sig(class, span)? else {
+            return self.legacy_call(args);
+        };
+        let Some(s) = m.subs.get(method) else {
+            return self.err(span, format!("{class} has no method `{method}`"));
+        };
         if s.kind != SubKind::Constructor {
             return self.err(span, format!("{class}::{method} is not a constructor (its first parameter is not `Class $class`)"));
         }
@@ -448,11 +566,21 @@ impl<'a> Checker<'a> {
         };
         // Receiver types come from checked declarations, so no `use` is required here.
         let m = self.sig_of(c)?;
-        let Some(m) = m else { return self.legacy_call(args) };
-        let Some(s) = m.subs.get(method) else { return self.err(span, format!("{c} has no method `{method}`")) };
+        let Some(m) = m else {
+            return self.legacy_call(args);
+        };
+        let Some(s) = m.subs.get(method) else {
+            return self.err(span, format!("{c} has no method `{method}`"));
+        };
         match s.kind {
-            SubKind::Constructor => self.err(span, format!("constructor `{method}` must be called on the class: `{c}->{method}(...)`")),
-            SubKind::Function => self.err(span, format!("`{method}` is a function, not a method; call it as `{c}::{method}(...)`")),
+            SubKind::Constructor => self.err(
+                span,
+                format!("constructor `{method}` must be called on the class: `{c}->{method}(...)`"),
+            ),
+            SubKind::Function => self.err(
+                span,
+                format!("`{method}` is a function, not a method; call it as `{c}::{method}(...)`"),
+            ),
             SubKind::Method => {
                 self.args(s, &format!("{c}::{method}"), args, span)?;
                 Ok(s.ret.clone())
@@ -465,9 +593,15 @@ impl<'a> Checker<'a> {
         match &rt {
             Type::HashRef(_) => self.err(span, "element access on HashRef is not supported"),
             Type::Object(c) if self.is_own(c) => {
-                let in_method = matches!(self.current_kind(), Some(SubKind::Method | SubKind::Constructor));
+                let in_method = matches!(
+                    self.current_kind(),
+                    Some(SubKind::Method | SubKind::Constructor)
+                );
                 if !in_method {
-                    return self.err(span, format!("fields of {c} can only be read in a method of {c}"));
+                    return self.err(
+                        span,
+                        format!("fields of {c} can only be read in a method of {c}"),
+                    );
                 }
                 match self.own.fields.iter().find(|(n, _)| n == name) {
                     Some((_, t)) => Ok(t.clone()),
@@ -481,13 +615,21 @@ impl<'a> Checker<'a> {
 
     /// `return bless({...}, $class);` inside a constructor.
     fn bless(&mut self, e: &Expr) -> R<()> {
-        let ExprKind::Bless { fields, target } = &e.kind else { unreachable!("caller checks for Bless") };
+        let ExprKind::Bless { fields, target } = &e.kind else {
+            unreachable!("caller checks for Bless")
+        };
         let is_ctor = self.current_kind() == Some(SubKind::Constructor);
         if !is_ctor {
-            return self.err(e.span, "bless is only allowed in a constructor (first parameter `Class $class`)");
+            return self.err(
+                e.span,
+                "bless is only allowed in a constructor (first parameter `Class $class`)",
+            );
         }
         if !matches!(&target.kind, ExprKind::Var(v) if v == "class") {
-            return self.err(target.span, "bless target must be the constructor's `$class`");
+            return self.err(
+                target.span,
+                "bless target must be the constructor's `$class`",
+            );
         }
         let own = self.own.clone();
         let mut seen = HashSet::new();
@@ -496,14 +638,25 @@ impl<'a> Checker<'a> {
                 return self.err(pr.span, format!("duplicate key `{}`", pr.key));
             }
             let Some((_, fty)) = own.fields.iter().find(|(n, _)| *n == pr.key) else {
-                return self.err(pr.span, format!("unknown field `{}` in bless for {}", pr.key, own.package));
+                return self.err(
+                    pr.span,
+                    format!("unknown field `{}` in bless for {}", pr.key, own.package),
+                );
             };
             let got = self.expr(&pr.value, Some(fty))?;
-            self.expect_assignable(&got, fty, pr.value.span, &format!("field `{}` of {}: ", pr.key, own.package))?;
+            self.expect_assignable(
+                &got,
+                fty,
+                pr.value.span,
+                &format!("field `{}` of {}: ", pr.key, own.package),
+            )?;
         }
         for (n, t) in &own.fields {
             if !seen.contains(n.as_str()) && !matches!(t, Type::Optional(_)) {
-                return self.err(e.span, format!("missing field `{n}` in bless for {}", own.package));
+                return self.err(
+                    e.span,
+                    format!("missing field `{n}` in bless for {}", own.package),
+                );
             }
         }
         Ok(())
@@ -533,10 +686,19 @@ mod tests {
         assert!(assignable(&Int, &Optional(b(Int))));
         assert!(assignable(&Optional(b(Int)), &Optional(b(Int))));
         assert!(!assignable(&Optional(b(Int)), &Int));
-        assert!(assignable(&Optional(b(Int)), &Union(vec![Optional(b(Int)), Str])));
-        assert!(assignable(&ArrayRef(b(Int)), &ArrayRef(b(Union(vec![Int, Str])))));
+        assert!(assignable(
+            &Optional(b(Int)),
+            &Union(vec![Optional(b(Int)), Str])
+        ));
+        assert!(assignable(
+            &ArrayRef(b(Int)),
+            &ArrayRef(b(Union(vec![Int, Str])))
+        ));
         assert!(!assignable(&ArrayRef(b(Int)), &HashRef(b(Int))));
         assert!(assignable(&Object("Point".into()), &Object("Point".into())));
-        assert!(!assignable(&Object("Point::Label".into()), &Object("Point".into())));
+        assert!(!assignable(
+            &Object("Point::Label".into()),
+            &Object("Point".into())
+        ));
     }
 }
