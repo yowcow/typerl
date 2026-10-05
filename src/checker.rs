@@ -768,14 +768,8 @@ mod tests {
         assert!(ok(&Int, &Optional(b(Int))));
         assert!(ok(&Optional(b(Int)), &Optional(b(Int))));
         assert!(!ok(&Optional(b(Int)), &Int));
-        assert!(ok(
-            &Optional(b(Int)),
-            &Union(vec![Optional(b(Int)), Str])
-        ));
-        assert!(ok(
-            &ArrayRef(b(Int)),
-            &ArrayRef(b(Union(vec![Int, Str])))
-        ));
+        assert!(ok(&Optional(b(Int)), &Union(vec![Optional(b(Int)), Str])));
+        assert!(ok(&ArrayRef(b(Int)), &ArrayRef(b(Union(vec![Int, Str])))));
         assert!(!ok(&ArrayRef(b(Int)), &HashRef(b(Int))));
         assert!(ok(&Object("Point".into()), &Object("Point".into())));
     }
