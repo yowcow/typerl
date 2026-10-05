@@ -561,6 +561,13 @@ impl Parser<'_> {
         self.postfix()
     }
 
+    fn bare_method(&self, name: &str) -> R<()> {
+        if name.contains("::") {
+            return self.err(self.span(), "qualified method names are not supported");
+        }
+        Ok(())
+    }
+
     fn postfix(&mut self) -> R<Expr> {
         let mut e = self.primary()?;
         let mut n = 0;
@@ -570,6 +577,7 @@ impl Parser<'_> {
             let span = e.span;
             match self.tok().clone() {
                 Tok::Ident(method) => {
+                    self.bare_method(&method)?;
                     self.advance();
                     let args = if self.is_punct("(") { self.call_args()? } else { Args::Positional(vec![]) };
                     e = Expr { kind: ExprKind::MethodCall { recv: Box::new(e), method, args }, span };
@@ -684,6 +692,7 @@ impl Parser<'_> {
         if self.eat_punct("->") {
             let method = match self.tok().clone() {
                 Tok::Ident(m) => {
+                    self.bare_method(&m)?;
                     self.advance();
                     m
                 }

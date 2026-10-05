@@ -155,3 +155,39 @@ fn rejects_unknown_type_in_signature() {
 fn accepts_used_legacy_class_in_signature() {
     assert_ok(&script("use Foo;\nsub f(Foo $x) -> Int {\n    return 1;\n}\n"));
 }
+
+// ---- Task 12: only a genuinely missing .tpm is legacy Perl ----
+
+#[test]
+fn directory_named_like_module_is_an_error() {
+    let dir = tmpdir();
+    write(&dir, "Foo.tpm/keep", "");
+    write(&dir, "a.tpr", "use Foo;\n");
+    let out = run_typerl(&dir, &["build", "a.tpr"]);
+    assert_err(&out, "Foo.tpm:1:1:", "not a regular file");
+}
+
+#[test]
+fn dangling_symlink_module_is_an_error() {
+    let dir = tmpdir();
+    std::os::unix::fs::symlink("missing-target", dir.join("Foo.tpm")).unwrap();
+    write(&dir, "a.tpr", "use Foo;\n");
+    let out = run_typerl(&dir, &["build", "a.tpr"]);
+    assert_err(&out, "Foo.tpm:1:1:", "cannot read");
+}
+
+#[test]
+fn symlink_to_regular_module_is_followed() {
+    let dir = tmpdir();
+    write(&dir, "Real.tpm", "package Foo;\n\nsub f() -> Int {\n    return 1;\n}\n");
+    std::os::unix::fs::symlink("Real.tpm", dir.join("Foo.tpm")).unwrap();
+    write(&dir, "a.tpr", "use Foo;\nmy Int $n = Foo::f();\n");
+    assert_ok(&run_typerl(&dir, &["build", "a.tpr"]));
+}
+
+#[test]
+fn missing_module_is_legacy_perl() {
+    let dir = tmpdir();
+    write(&dir, "a.tpr", "use Foo;\nmy Any $x = Foo::f();\n");
+    assert_ok(&run_typerl(&dir, &["build", "a.tpr"]));
+}

@@ -198,6 +198,11 @@ fn rejects_class_value_misuse() {
 }
 
 #[test]
+fn class_value_may_be_passed_to_runtime_checked_conversions() {
+    assert_ok(&ctor("my Str $k = to_str($class);\n    return bless({ x => $x }, $class);"));
+}
+
+#[test]
 fn rejects_constructor_without_class_param() {
     let point = "package Point;\nfield x: Int;\nsub new(:Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n";
     assert_err(&build(&[("Point.tpm", point)], &["Point.tpm"]), "Point.tpm:4:", "bless is only allowed in a constructor");
@@ -355,4 +360,38 @@ fn rejects_class_call_on_unused_package() {
 fn constructor_accepts_empty_literal_for_optional_arrayref_field() {
     let point = "package Point;\n\nfield x: Int;\nfield tags: Optional[ArrayRef[Str]];\n\nsub new(Class $class, :Int $x, :Optional[ArrayRef[Str]] $tags) -> Point {\n    return bless({ x => $x, tags => $tags }, $class);\n}\n";
     assert_ok(&build(&[("Point.tpm", point), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1, tags => []);\n")], &["a.tpr"]));
+}
+
+// ---- Task 12: qualified method names are outside the bare-method syntax ----
+
+const QPOINT: &str = "package Point;\n\nfield x: Int;\n\nsub new(Class $class, :Int $x) -> Point {\n    return bless({ x => $x }, $class);\n}\n\nsub x(Point $self) -> Int {\n    return $self->{x};\n}\n";
+
+fn rejects_qualified_method(files: &[(&str, &str)], prefix: &str) {
+    assert_err(&build(files, &["a.tpr"]), prefix, "qualified method names are not supported");
+}
+
+#[test]
+fn rejects_qualified_method_name_on_instance() {
+    rejects_qualified_method(
+        &[("Point.tpm", QPOINT), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1);\nmy Int $n = $p->Point::x();\n")],
+        "a.tpr:3:",
+    );
+}
+
+#[test]
+fn rejects_qualified_method_name_on_class() {
+    rejects_qualified_method(&[("a.tpr", "use Legacy::Util;\nLegacy::Util->Other::emit(1);\n")], "a.tpr:2:");
+}
+
+#[test]
+fn rejects_qualified_method_name_on_legacy_instance() {
+    rejects_qualified_method(
+        &[("a.tpr", "use Legacy::Util;\nmy Any $a = Legacy::Util::make();\nmy Legacy::Util $u = $a;\nmy Any $r = $u->SUPER::new();\n")],
+        "a.tpr:4:",
+    );
+}
+
+#[test]
+fn accepts_qualified_package_receiver() {
+    assert_ok(&script("use Legacy::Util;\nLegacy::Util->emit(1);\n"));
 }

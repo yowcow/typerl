@@ -95,3 +95,28 @@ fn reports_each_failing_file() {
     assert_err(&out, "bad1.tpr:1:", "type mismatch");
     assert_err(&out, "bad2.tpr:1:", "type mismatch");
 }
+
+// ---- Task 12: compiler thread creation failure ----
+
+/// Runs the binary under a 256 MiB address-space limit (`ulimit -v` in a child shell only), so the
+/// 512 MiB compiler stack cannot be reserved. Returns None if the limit cannot be set.
+#[test]
+fn thread_spawn_failure_is_a_diagnostic_and_writes_nothing() {
+    let dir = tmpdir();
+    write(&dir, "a.tpr", "my Int $x = 1;\n");
+    let o = std::process::Command::new("sh")
+        .current_dir(&dir)
+        .arg("-c")
+        .arg("ulimit -v 262144 || exit 99; exec \"$0\" build a.tpr")
+        .arg(env!("CARGO_BIN_EXE_typerl"))
+        .output()
+        .expect("run sh");
+    if o.status.code() == Some(99) {
+        return; // limit not settable here: nothing to reproduce
+    }
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "stderr:\n{stderr}");
+    assert_eq!(stderr.lines().count(), 1, "{stderr}");
+    assert!(stderr.starts_with("typerl:1:1: error: cannot start the compiler thread"), "{stderr}");
+    assert!(!dir.join("a.pl").exists(), "no output may be written");
+}

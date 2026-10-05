@@ -14,6 +14,7 @@ pub enum SubKind {
 
 #[derive(Debug, Clone)]
 pub struct SubSig {
+    #[allow(dead_code)]
     pub name: String,
     pub kind: SubKind,
     /// Parameters after the invocant.
@@ -196,6 +197,22 @@ pub struct Loader {
     cache: HashMap<String, Option<Rc<ModuleSig>>>,
 }
 
+/// Only a genuinely absent `.tpm` is legacy Perl. Anything else that is not a readable regular
+/// file (I/O error, directory, dangling symlink) is an error rather than a silent Any.
+fn module_exists(path: &Path, p: &str) -> Result<bool, Diag> {
+    let err = |msg: String| Diag::new(p, Span::START, msg);
+    match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(err(format!("cannot read file: {e}"))),
+        Ok(_) => {}
+    }
+    match std::fs::metadata(path) {
+        Err(e) => Err(err(format!("cannot read file: {e}"))),
+        Ok(m) if !m.is_file() => Err(err("cannot read file: not a regular file".to_string())),
+        Ok(_) => Ok(true),
+    }
+}
+
 impl Loader {
     /// `Some` for a typed module, `None` for legacy Perl (no .tpm).
     pub fn get(&mut self, package: &str) -> Result<Option<Rc<ModuleSig>>, Diag> {
@@ -203,8 +220,8 @@ impl Loader {
             return Ok(hit.clone());
         }
         let path = module_path(package);
-        let sig = if path.is_file() {
-            let p = path.to_string_lossy().into_owned();
+        let p = path.to_string_lossy().into_owned();
+        let sig = if module_exists(&path, &p)? {
             let src = std::fs::read_to_string(&path)
                 .map_err(|e| Diag::new(&p, Span::START, format!("cannot read file: {e}")))?;
             let file = parser::parse(&p, &src, FileKind::Module)?;

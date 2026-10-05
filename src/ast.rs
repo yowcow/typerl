@@ -60,6 +60,7 @@ pub struct File {
 #[derive(Debug)]
 pub struct Use {
     pub name: String,
+    #[allow(dead_code)] // kept for diagnostics on `use` lines
     pub span: Span,
 }
 
@@ -98,10 +99,10 @@ pub struct Param {
 #[derive(Debug)]
 pub enum Stmt {
     My { ty: Type, name: String, init: Expr, span: Span },
-    If { arms: Vec<(Expr, Vec<Stmt>)>, els: Option<Vec<Stmt>>, span: Span },
+    If { arms: Vec<(Expr, Vec<Stmt>)>, els: Option<Vec<Stmt>>, #[allow(dead_code)] span: Span },
     Foreach { ty: Type, var: String, list: Expr, body: Vec<Stmt>, span: Span },
     Return { value: Option<Expr>, span: Span },
-    Die { msg: Expr, span: Span },
+    Die { msg: Expr, #[allow(dead_code)] span: Span },
     Expr(Expr),
 }
 

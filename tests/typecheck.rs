@@ -337,3 +337,32 @@ fn rejects_literal_element_mismatch_under_optional() {
 fn rejects_empty_literal_for_ambiguous_union() {
     rejects("my ArrayRef[Int]|ArrayRef[Str] $u = [];\n", "a.tpr:1:", "cannot infer the type of an empty literal");
 }
+
+// ---- Task 12: literals under unions containing Any / Optional members ----
+
+#[test]
+fn any_in_union_leaves_array_literal_unconstrained() {
+    assert_ok(&script("my Any|ArrayRef[Int] $v = [\"a\"];\n"));
+    assert_ok(&script("my Optional[Any|ArrayRef[Int]] $w = [\"a\"];\n"));
+    assert_ok(&script("my Optional[Any]|ArrayRef[Int] $x = [\"a\"];\n"));
+}
+
+#[test]
+fn any_in_union_leaves_hash_literal_unconstrained() {
+    assert_ok(&script("my Any|HashRef[Int] $v = { a => \"x\" };\n"));
+}
+
+#[test]
+fn any_in_union_still_needs_context_for_empty_literal() {
+    rejects("my Any|ArrayRef[Int] $v = [];\n", "a.tpr:1:", "cannot infer the type of an empty literal");
+}
+
+#[test]
+fn union_without_any_still_checks_literal_elements() {
+    rejects("my ArrayRef[Int]|Str $v = [1, \"a\"];\n", "a.tpr:1:", "type mismatch: expected Int, found Str");
+}
+
+#[test]
+fn optional_container_inside_union_member_gives_literal_context() {
+    assert_ok(&script("my Optional[ArrayRef[Str]]|Int $v = [];\n"));
+}

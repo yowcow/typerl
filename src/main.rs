@@ -22,12 +22,14 @@ const USAGE: &str = "usage: typerl build <file.tpm|file.tpr>...";
 const STACK_SIZE: usize = 512 * 1024 * 1024;
 
 fn main() -> ExitCode {
-    std::thread::Builder::new()
-        .stack_size(STACK_SIZE)
-        .spawn(run)
-        .expect("spawn compiler thread")
-        .join()
-        .unwrap_or(ExitCode::from(101))
+    // Never fall back to a smaller, unmeasured stack: report and stop instead.
+    match std::thread::Builder::new().stack_size(STACK_SIZE).spawn(run) {
+        Ok(handle) => handle.join().unwrap_or(ExitCode::from(101)),
+        Err(e) => {
+            eprintln!("typerl:1:1: error: cannot start the compiler thread ({} MiB stack): {e}", STACK_SIZE >> 20);
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn run() -> ExitCode {
