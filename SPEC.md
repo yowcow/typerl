@@ -1,6 +1,6 @@
 # typerl 仕様
 
-本書は typerl コア（yowcow/typerl#2）の仕様である。親 issue yowcow/typerl#1 の元仕様と、設計コメント（https://github.com/yowcow/typerl/issues/1#issuecomment-5987379548 ）の確定判断を一つにまとめた。両者が食い違う箇所は確定判断を優先する。元仕様からの差分は §12 にまとめる。インターフェイス（yowcow/typerl#3）は本書の範囲外とする。
+本書は typerl コア（yowcow/typerl#2）の仕様である。親 issue yowcow/typerl#1 の元仕様と、設計コメント（https://github.com/yowcow/typerl/issues/1#issuecomment-5987379548 ）の確定判断を一つにまとめた。両者が食い違う箇所は確定判断を優先する。元仕様からの差分は §12 にまとめる。インターフェイス（yowcow/typerl#3）は本書の範囲内とする。
 
 ## 1. 概要
 
@@ -34,7 +34,7 @@ typerl build <file.tpm|file.tpr>...
 
 ### 3.2 .tpm（モジュール）
 
-- 順序は `package Name;` → `use` 群 → `field` と `sub`（この 2 つは混在してよい）（C3）。
+- 順序は `package Name;` → `use` 群 → `field` と `sub`（この 2 つは混在してよい）（C3）。ただしインターフェイスモジュール（`interface { }` を持つ `.tpm`）の順序は `package Name;` → `use` 群 → `interface` ブロック 1 つであり、`field` と本体のある `sub` は書けない。クラスのモジュールは従来どおりである。
 - package がちょうど 1 つ必要である。0 個、2 個以上、ファイル名との不一致はエラー。`package Name { ... }` やバージョン付きの形は書けない。
 - トップレベルに文は書けない。
 - 生成物は `1;` で終わる。
@@ -76,7 +76,7 @@ typerl build <file.tpm|file.tpr>...
 5. T が union なら、S がいずれかの要素に代入可能なときだけ可。
 6. T が `Optional[U]` なら、S が `Optional[V]` のときは V が U に、そうでなければ S が U に代入可能なときだけ可。S が Optional で T が Optional でないなら不可。
 7. `ArrayRef[S']` から `ArrayRef[T']`、`HashRef[S']` から `HashRef[T']` は、S' が T' に代入可能なときだけ可（要素を書き換える構文が無いため、共変でも健全である）。
-8. それ以外は同じ型のときだけ可。クラス型は名前の完全一致だけを見て、継承は見ない（C1）。暗黙の数値変換と文字列変換は無い。
+8. それ以外は同じ型のときだけ可。クラス型同士は名前の完全一致だけを見て、継承は見ない（C1）。クラス型 S をインターフェイス型 T の位置に置けるときは、S が T の全メソッドを同一シグネチャで持つときに限る。比較から invocant（`$self`）は除き、位置引数か名前付き引数か、名前付き引数の名前、引数の型、戻り値の型のすべてが一致しなければならない。位置引数の名前は比較しない。暗黙の数値変換と文字列変換は無い。
 
 ### 5.2 Any の絞り込み
 
@@ -115,7 +115,7 @@ Any に対するメソッド呼び出し、フィールド参照、演算はで�
 - invocant を除く引数は、すべて位置引数か、すべて名前付き引数である。混在はエラー。
 - 名前は修飾できず、重複できない。予約名 `Int Str Bool Any Void Class ArrayRef HashRef Optional Maybe InstanceOf to_int to_str to_bool BEGIN CHECK INIT END UNITCHECK AUTOLOAD DESTROY import unimport` は使えない。関数（メソッドとコンストラクタ以外）は Perl の組み込み関数、および `__END__ __DATA__ __PACKAGE__ __FILE__ __LINE__ __SUB__ __CLASS__` と同じ名前にできない。生成した呼び出しが組み込み関数やキーワードとして解釈されてしまうためである。
 - 入れ子の sub、無名 sub、サブルーチンリファレンスは書けない。
-- Void 以外の sub は、すべての経路が `return`（または `die`）で終わらなければならない。経路は、最後まで `return` か `die` に達するか、すべての分岐が終わる `if` / `elsif` / `else` で判定する。Void の sub は `return;` だけを書ける。
+- Void 以外の sub は、すべての経路が `return`（または `die`）で終わらなければならない。経路は、最後まで `return` か `die` に達するか、すべての分岐が終わる `if` / `elsif` / `else` で判定する。Void の sub は `return;` だけを書ける。例外として、`interface { }` の中では本体の無い宣言 `sub name(params) -> Type;` だけを書ける。`interface { }` の外で `{` の無い sub を書くと、パーサが先に拒否する（`return` の検査には達しない）。
 
 ## 7. 文
 
@@ -163,7 +163,7 @@ Any に対するメソッド呼び出し、フィールド参照、演算はで�
 - `.tpm` の sub はすべて公開扱いで、入口に実行時検査を付ける。`.tpr` の sub は内部扱いで、検査を付けない（C5）。
 - 引数は `my ($x, $y) = @_;` で受け取る。名前付き引数がある sub は `my ($class, %args) = @_;` のように `%args` で受け取る。`%args` はフラットな key-value であり、ハッシュリファレンス 1 個ではない。名前付き引数 `$x` の参照は `$args{x}` に置き換える（文字列の展開を含む）。
 - 入口検査は引数ごとに `T->assert_valid(...)` を出す。Any と Class は検査しない。メソッドの `$self` も検査する。
-- 型の対応: Int → `Int`、Str → `Str`、Bool → `Bool`、Any → `Any`、`ArrayRef[T]` → `ArrayRef[T]`、`HashRef[T]` → `HashRef[T]`、`Optional[T]` → `Maybe[T]`（C2。Types::Standard の `Optional` は Dict / Tuple 専用で、単体では undef を拒否するため）、`T|U` → `(T | U)`、クラス C → `(InstanceOf["C"])->where(sub { ref($_) eq "C" })`（C1。`InstanceOf` は isa で判定し、サブクラスを通してしまうため）。パラメータ付きの型は `(Maybe[Str])->assert_valid(...)` のように括弧で囲む。
+- 型の対応: Int → `Int`、Str → `Str`、Bool → `Bool`、Any → `Any`、`ArrayRef[T]` → `ArrayRef[T]`、`HashRef[T]` → `HashRef[T]`、`Optional[T]` → `Maybe[T]`（C2。Types::Standard の `Optional` は Dict / Tuple 専用で、単体では undef を拒否するため）、`T|U` → `(T | U)`、クラス C → `(InstanceOf["C"])->where(sub { ref($_) eq "C" })`（C1。`InstanceOf` は isa で判定し、サブクラスを通してしまうため）。クラス型に対してはこの形を保つ。インターフェイス型の公開引数は `HasMethods["m", ...]->assert_valid(...)` で検査する。メソッド名だけを並べ、ソートし、ダブルクォートで囲む。パラメータ付きの型は `(Maybe[Str])->assert_valid(...)` のように括弧で囲む。
 - `to_int(e)` は `Int->assert_return(e)`、`to_str(e)` は `Str->assert_return(e)`、`to_bool(e)` は `Bool->assert_return(e)` になる。既存 Perl クラスの注釈は `<クラスの検査>->assert_return(e)` になる。
 - `foreach my T $v (e)` は `foreach my $v (@{e})` になる。Void の sub が return や die で終わらないときは、末尾に `return;` を足す。
 - 式の括弧は、Perl の優先順位を保つのに必要な箇所に出す。
@@ -201,7 +201,7 @@ sub new {
 
 ## 11. 非目標
 
-既存 Perl / CPAN の型検査と型推論、Perl 全構文の受理、型なしコードの内側までの健全性、LSP / tree-sitter / 言語サーバ / 補完、Raku や PHP の互換、継承・role・where 節・subset・ユーザ定義ジェネリクス、速度最適化、暗黙の変数、フィールドの自動アクセサ。インターフェイスは yowcow/typerl#3 で扱う。
+既存 Perl / CPAN の型検査と型推論、Perl 全構文の受理、型なしコードの内側までの健全性、LSP / tree-sitter / 言語サーバ / 補完、Raku や PHP の互換、継承・role・where 節・subset・ユーザ定義ジェネリクス、速度最適化、暗黙の変数、フィールドの自動アクセサ。role は引き続き範囲外である。インターフェイスは yowcow/typerl#3 で扱う構造型であり、`implements` による明示、デフォルト実装、ジェネリクスは持たず、role とは別物である。
 
 ## 12. 元仕様からの変更点
 

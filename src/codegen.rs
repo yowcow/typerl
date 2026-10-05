@@ -1,9 +1,28 @@
 use crate::ast::*;
 use crate::checker::Facts;
 use crate::diag::{Diag, Span};
-use std::collections::{BTreeSet, HashSet};
+use crate::modules;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub fn generate(file: &File, facts: &Facts, path: &str) -> Result<String, Diag> {
+    let mut loader = modules::Loader::default();
+    let mut ifaces: HashMap<String, Vec<String>> = HashMap::new();
+    for u in &file.uses {
+        if let Some(sig) = loader.get(&u.name)? {
+            if sig.is_interface {
+                let mut ms: Vec<String> = sig.iface.keys().cloned().collect();
+                ms.sort();
+                ifaces.insert(u.name.clone(), ms);
+            }
+        }
+    }
+    if let Some(block) = &file.interface {
+        if let Some((pkg, _)) = &file.package {
+            let mut ms: Vec<String> = block.methods.iter().map(|m| m.name.clone()).collect();
+            ms.sort();
+            ifaces.insert(pkg.clone(), ms);
+        }
+    }
     let mut g = Gen {
         facts,
         path,
@@ -11,6 +30,7 @@ pub fn generate(file: &File, facts: &Facts, path: &str) -> Result<String, Diag> 
         imports: BTreeSet::new(),
         named: HashSet::new(),
         out: Vec::new(),
+        ifaces,
     };
     let mut prev_stmt = false;
     for item in &file.items {
@@ -63,6 +83,7 @@ struct Gen<'a> {
     /// Named parameters of the sub being emitted (read as `$args{name}`).
     named: HashSet<String>,
     out: Vec<String>,
+    ifaces: HashMap<String, Vec<String>>,
 }
 
 impl Gen<'_> {
@@ -102,6 +123,16 @@ impl Gen<'_> {
                 Ok(format!("({})", parts.join(" | ")))
             }
             Type::Object(c) => {
+                if let Some(ms) = self.ifaces.get(c).cloned() {
+                    self.imp("HasMethods");
+                    return Ok(format!(
+                        "HasMethods[{}]",
+                        ms.iter()
+                            .map(|m| format!("\"{m}\""))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
                 self.imp("InstanceOf");
                 Ok(format!(
                     "(InstanceOf[\"{c}\"])->where(sub {{ ref($_) eq \"{c}\" }})"
@@ -119,7 +150,9 @@ impl Gen<'_> {
     fn check_target(&mut self, t: &Type, span: Span) -> Result<String, Diag> {
         let s = self.tt(t, span)?;
         Ok(
-            if matches!(t, Type::ArrayRef(_) | Type::HashRef(_) | Type::Optional(_)) {
+            if matches!(t, Type::ArrayRef(_) | Type::HashRef(_) | Type::Optional(_))
+                || matches!(t, Type::Object(c) if self.ifaces.contains_key(c))
+            {
                 format!("({s})")
             } else {
                 s

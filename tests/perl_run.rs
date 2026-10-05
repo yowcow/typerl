@@ -88,3 +88,29 @@ fn negated_method_chain_rooted_at_file_test_letter_is_negation_not_file_test() {
     let out = perl(&dir, "neg.pl");
     assert_eq!(out.code, 0, "stderr:\n{}", out.stderr);
 }
+
+#[test]
+fn interface_dispatch_runs_through_perl() {
+    let dir = tmpdir();
+    write(
+        &dir,
+        "Shape.tpm",
+        "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n",
+    );
+    write(
+        &dir,
+        "Circle.tpm",
+        "package Circle;\nfield r: Int;\nsub new(Class $class, :Int $r) -> Circle {\n    return bless({ r => $r }, $class);\n}\nsub area(Circle $self) -> Int {\n    return $self->{r} * $self->{r};\n}\n",
+    );
+    write(
+        &dir,
+        "iface_main.tpr",
+        "use Shape;\nuse Circle;\nsub report(Shape $s) -> Int {\n    return $s->area;\n}\nmy Circle $c = Circle->new(r => 3);\nmy Int $a = report($c);\nif ($a == 9) {\n} else {\n    die \"bad area\";\n}\n",
+    );
+    assert_ok(&run_typerl(
+        &dir,
+        &["build", "Shape.tpm", "Circle.tpm", "iface_main.tpr"],
+    ));
+    let out = perl(&dir, "iface_main.pl");
+    assert_eq!(out.code, 0, "stderr:\n{}", out.stderr);
+}

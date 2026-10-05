@@ -78,6 +78,27 @@ sub log_it(Point $self) -> Void {
     assert_ok(&build(&[("Point.tpm", src)], &["Point.tpm"]));
 }
 
+#[test]
+fn accepts_interface_block_with_bodyless_subs() {
+    assert_ok(&build(
+        &[(
+            "Shape.tpm",
+            "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n",
+        )],
+        &["Shape.tpm"],
+    ));
+}
+
+#[test]
+fn rejects_bodyless_sub_outside_interface() {
+    rejects_module(
+        "Point.tpm",
+        "package Point;\nsub area(Point $self) -> Int;\n",
+        "Point.tpm:",
+        "expected `{`",
+    );
+}
+
 // ---- original spec 落とす list ----
 
 #[test]

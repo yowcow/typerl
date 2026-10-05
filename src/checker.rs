@@ -11,20 +11,16 @@ pub struct Facts {
 
 type R<T> = Result<T, Diag>;
 
-pub fn assignable(from: &Type, to: &Type) -> bool {
-    use Type::*;
-    match (from, to) {
-        (Void, _) | (Class, _) | (_, Void) | (_, Class) => false,
-        (_, Any) => true,
-        (Any, _) => false,
-        (Union(fs), _) => fs.iter().all(|f| assignable(f, to)),
-        (_, Union(ts)) => ts.iter().any(|t| assignable(from, t)),
-        (Optional(f), Optional(t)) => assignable(f, t),
-        (_, Optional(t)) => assignable(from, t),
-        (Optional(_), _) => false,
-        (ArrayRef(f), ArrayRef(t)) | (HashRef(f), HashRef(t)) => assignable(f, t),
-        _ => from == to,
-    }
+fn signatures_equal(a: &SubSig, b: &SubSig) -> bool {
+    a.kind == SubKind::Method
+        && b.kind == SubKind::Method
+        && a.named == b.named
+        && a.ret == b.ret
+        && a.params.len() == b.params.len()
+        && a.params
+            .iter()
+            .zip(&b.params)
+            .all(|(p, q)| p.named == q.named && p.ty == q.ty && (!p.named || p.name == q.name))
 }
 
 /// Element type a literal is checked against when the expected type fixes one: `Optional[...]` is
@@ -133,8 +129,8 @@ impl<'a> Checker<'a> {
         modules::check_type(ty, &self.known, false).map_err(|m| Diag::new(self.path, span, m))
     }
 
-    fn expect_assignable(&self, got: &Type, want: &Type, span: Span, ctx: &str) -> R<()> {
-        if assignable(got, want) {
+    fn expect_assignable(&mut self, got: &Type, want: &Type, span: Span, ctx: &str) -> R<()> {
+        if self.assignable_ctx(got, want)? {
             return Ok(());
         }
         let hint = if *got == Type::Any {
@@ -146,6 +142,60 @@ impl<'a> Checker<'a> {
             span,
             format!("{ctx}type mismatch: expected {want}, found {got}{hint}"),
         )
+    }
+
+    fn satisfies(&mut self, class: &str, iface: &str) -> R<bool> {
+        let Some(iface_sig) = self.sig_of(iface)? else {
+            return Ok(false);
+        };
+        if !iface_sig.is_interface {
+            return Ok(false);
+        }
+        let Some(class_sig) = self.sig_of(class)? else {
+            return Ok(false);
+        };
+        if class_sig.is_interface {
+            return Ok(false);
+        }
+        for (name, want) in &iface_sig.iface {
+            match class_sig.subs.get(name) {
+                Some(got) if signatures_equal(got, want) => {}
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
+    fn assignable_ctx(&mut self, from: &Type, to: &Type) -> R<bool> {
+        use Type::*;
+        match (from, to) {
+            (Void, _) | (Class, _) | (_, Void) | (_, Class) => Ok(false),
+            (_, Any) => Ok(true),
+            (Any, _) => Ok(false),
+            (Union(fs), _) => {
+                for f in fs {
+                    if !self.assignable_ctx(f, to)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
+            (_, Union(ts)) => {
+                for t in ts {
+                    if self.assignable_ctx(from, t)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            (Optional(f), Optional(t)) => self.assignable_ctx(f, t),
+            (_, Optional(t)) => self.assignable_ctx(from, t),
+            (Optional(_), _) => Ok(false),
+            (ArrayRef(f), ArrayRef(t)) | (HashRef(f), HashRef(t)) => self.assignable_ctx(f, t),
+            (Object(a), Object(b)) if a == b => Ok(true),
+            (Object(a), Object(b)) => Ok(self.satisfies(a, b)?),
+            _ => Ok(from == to),
+        }
     }
 
     fn sub(&mut self, s: &'a Sub) -> R<()> {
@@ -569,6 +619,13 @@ impl<'a> Checker<'a> {
         let Some(m) = m else {
             return self.legacy_call(args);
         };
+        if m.is_interface {
+            let Some(s) = m.iface.get(method) else {
+                return self.err(span, format!("{c} has no method `{method}`"));
+            };
+            self.args(s, &format!("{c}::{method}"), args, span)?;
+            return Ok(s.ret.clone());
+        }
         let Some(s) = m.subs.get(method) else {
             return self.err(span, format!("{c} has no method `{method}`"));
         };
@@ -674,31 +731,46 @@ mod tests {
 
     #[test]
     fn assignability() {
-        assert!(assignable(&Int, &Int));
-        assert!(!assignable(&Int, &Str));
-        assert!(assignable(&Int, &Any));
-        assert!(!assignable(&Any, &Str));
-        assert!(assignable(&Any, &Any));
-        assert!(!assignable(&Class, &Any));
-        assert!(!assignable(&Void, &Any));
-        assert!(assignable(&Int, &Union(vec![Int, Str])));
-        assert!(!assignable(&Union(vec![Int, Str]), &Int));
-        assert!(assignable(&Int, &Optional(b(Int))));
-        assert!(assignable(&Optional(b(Int)), &Optional(b(Int))));
-        assert!(!assignable(&Optional(b(Int)), &Int));
-        assert!(assignable(
-            &Optional(b(Int)),
-            &Union(vec![Optional(b(Int)), Str])
-        ));
-        assert!(assignable(
-            &ArrayRef(b(Int)),
-            &ArrayRef(b(Union(vec![Int, Str])))
-        ));
-        assert!(!assignable(&ArrayRef(b(Int)), &HashRef(b(Int))));
-        assert!(assignable(&Object("Point".into()), &Object("Point".into())));
-        assert!(!assignable(
-            &Object("Point::Label".into()),
-            &Object("Point".into())
-        ));
+        let file = File {
+            kind: FileKind::Script,
+            package: None,
+            uses: vec![],
+            items: vec![],
+            interface: None,
+        };
+        let mut c = Checker {
+            path: "test",
+            file: &file,
+            own: Rc::new(ModuleSig {
+                package: String::new(),
+                subs: HashMap::new(),
+                fields: Vec::new(),
+                is_interface: false,
+                iface: HashMap::new(),
+            }),
+            loader: Loader::default(),
+            known: HashSet::new(),
+            scopes: Vec::new(),
+            current: None,
+            facts: Facts::default(),
+        };
+        // Different-named objects need the loader; covered by tests/typecheck.rs rejects_*.
+        let mut ok = |from: &Type, to: &Type| c.assignable_ctx(from, to).unwrap();
+        assert!(ok(&Int, &Int));
+        assert!(!ok(&Int, &Str));
+        assert!(ok(&Int, &Any));
+        assert!(!ok(&Any, &Str));
+        assert!(ok(&Any, &Any));
+        assert!(!ok(&Class, &Any));
+        assert!(!ok(&Void, &Any));
+        assert!(ok(&Int, &Union(vec![Int, Str])));
+        assert!(!ok(&Union(vec![Int, Str]), &Int));
+        assert!(ok(&Int, &Optional(b(Int))));
+        assert!(ok(&Optional(b(Int)), &Optional(b(Int))));
+        assert!(!ok(&Optional(b(Int)), &Int));
+        assert!(ok(&Optional(b(Int)), &Union(vec![Optional(b(Int)), Str])));
+        assert!(ok(&ArrayRef(b(Int)), &ArrayRef(b(Union(vec![Int, Str])))));
+        assert!(!ok(&ArrayRef(b(Int)), &HashRef(b(Int))));
+        assert!(ok(&Object("Point".into()), &Object("Point".into())));
     }
 }
