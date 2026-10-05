@@ -11,25 +11,6 @@ pub struct Facts {
 
 type R<T> = Result<T, Diag>;
 
-// Test-only + non-Object helper retained: runtime paths use loader-aware
-// `assignable_ctx` (handles Object/interface subtyping); kept for unit tests.
-#[allow(dead_code)]
-pub fn assignable(from: &Type, to: &Type) -> bool {
-    use Type::*;
-    match (from, to) {
-        (Void, _) | (Class, _) | (_, Void) | (_, Class) => false,
-        (_, Any) => true,
-        (Any, _) => false,
-        (Union(fs), _) => fs.iter().all(|f| assignable(f, to)),
-        (_, Union(ts)) => ts.iter().any(|t| assignable(from, t)),
-        (Optional(f), Optional(t)) => assignable(f, t),
-        (_, Optional(t)) => assignable(from, t),
-        (Optional(_), _) => false,
-        (ArrayRef(f), ArrayRef(t)) | (HashRef(f), HashRef(t)) => assignable(f, t),
-        _ => from == to,
-    }
-}
-
 fn signatures_equal(a: &SubSig, b: &SubSig) -> bool {
     a.kind == SubKind::Method
         && b.kind == SubKind::Method
@@ -750,31 +731,52 @@ mod tests {
 
     #[test]
     fn assignability() {
-        assert!(assignable(&Int, &Int));
-        assert!(!assignable(&Int, &Str));
-        assert!(assignable(&Int, &Any));
-        assert!(!assignable(&Any, &Str));
-        assert!(assignable(&Any, &Any));
-        assert!(!assignable(&Class, &Any));
-        assert!(!assignable(&Void, &Any));
-        assert!(assignable(&Int, &Union(vec![Int, Str])));
-        assert!(!assignable(&Union(vec![Int, Str]), &Int));
-        assert!(assignable(&Int, &Optional(b(Int))));
-        assert!(assignable(&Optional(b(Int)), &Optional(b(Int))));
-        assert!(!assignable(&Optional(b(Int)), &Int));
-        assert!(assignable(
+        let file = File {
+            kind: FileKind::Script,
+            package: None,
+            uses: vec![],
+            items: vec![],
+            interface: None,
+        };
+        let mut c = Checker {
+            path: "test",
+            file: &file,
+            own: Rc::new(ModuleSig {
+                package: String::new(),
+                subs: HashMap::new(),
+                fields: Vec::new(),
+                is_interface: false,
+                iface: HashMap::new(),
+            }),
+            loader: Loader::default(),
+            known: HashSet::new(),
+            scopes: Vec::new(),
+            current: None,
+            facts: Facts::default(),
+        };
+        // Different-named objects need the loader; covered by tests/typecheck.rs rejects_*.
+        let mut ok = |from: &Type, to: &Type| c.assignable_ctx(from, to).unwrap();
+        assert!(ok(&Int, &Int));
+        assert!(!ok(&Int, &Str));
+        assert!(ok(&Int, &Any));
+        assert!(!ok(&Any, &Str));
+        assert!(ok(&Any, &Any));
+        assert!(!ok(&Class, &Any));
+        assert!(!ok(&Void, &Any));
+        assert!(ok(&Int, &Union(vec![Int, Str])));
+        assert!(!ok(&Union(vec![Int, Str]), &Int));
+        assert!(ok(&Int, &Optional(b(Int))));
+        assert!(ok(&Optional(b(Int)), &Optional(b(Int))));
+        assert!(!ok(&Optional(b(Int)), &Int));
+        assert!(ok(
             &Optional(b(Int)),
             &Union(vec![Optional(b(Int)), Str])
         ));
-        assert!(assignable(
+        assert!(ok(
             &ArrayRef(b(Int)),
             &ArrayRef(b(Union(vec![Int, Str])))
         ));
-        assert!(!assignable(&ArrayRef(b(Int)), &HashRef(b(Int))));
-        assert!(assignable(&Object("Point".into()), &Object("Point".into())));
-        assert!(!assignable(
-            &Object("Point::Label".into()),
-            &Object("Point".into())
-        ));
+        assert!(!ok(&ArrayRef(b(Int)), &HashRef(b(Int))));
+        assert!(ok(&Object("Point".into()), &Object("Point".into())));
     }
 }

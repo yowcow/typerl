@@ -518,6 +518,30 @@ fn accepts_class_satisfying_interface() {
 }
 
 #[test]
+fn accepts_interface_through_optional_and_arrayref() {
+    assert_ok(&with(
+        &[("Shape.tpm", SHAPE), ("Circle.tpm", CIRCLE)],
+        "use Shape;\nuse Circle;\nsub f(Optional[Shape] $s) -> Int {\n    return 1;\n}\nmy Optional[Circle] $c = Circle->new(r => 2);\nmy Int $a = f($c);\n",
+    ));
+    assert_ok(&with(
+        &[("Shape.tpm", SHAPE), ("Circle.tpm", CIRCLE)],
+        "use Shape;\nuse Circle;\nsub g(ArrayRef[Shape] $s) -> Int {\n    return 1;\n}\nmy ArrayRef[Circle] $c = [Circle->new(r => 2)];\nmy Int $n = g($c);\n",
+    ));
+}
+
+#[test]
+fn rejects_interface_downcast() {
+    assert_err(
+        &with(
+            &[("Shape.tpm", SHAPE), ("Circle.tpm", CIRCLE)],
+            "use Shape;\nuse Circle;\nsub f(Circle $c) -> Int {\n    return 1;\n}\nsub g(Shape $s) -> Int {\n    return f($s);\n}\n",
+        ),
+        "a.tpr:",
+        "type mismatch",
+    );
+}
+
+#[test]
 fn rejects_class_missing_interface_method() {
     assert_err(
         &with(

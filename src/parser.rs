@@ -253,6 +253,9 @@ impl Parser<'_> {
             self.expect_punct("{")?;
             let mut methods = Vec::new();
             while !self.is_punct("}") {
+                if *self.tok() == Tok::Eof {
+                    return self.unexpected("`}`");
+                }
                 methods.push(self.iface_method()?);
             }
             self.advance();
@@ -269,6 +272,18 @@ impl Parser<'_> {
                     "sub" => {
                         f.items.push(Item::Sub(self.sub_decl()?));
                         continue;
+                    }
+                    "interface" => {
+                        return self.err(
+                            span,
+                            if self.kind != FileKind::Module {
+                                "interface is only allowed in a module (.tpm)"
+                            } else if f.interface.is_some() {
+                                "only one interface block per module is allowed"
+                            } else {
+                                "interface must appear before field and sub declarations"
+                            },
+                        );
                     }
                     _ => {
                         if let Some(m) = self.misplaced(&w) {
