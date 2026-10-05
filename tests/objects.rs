@@ -350,3 +350,9 @@ fn rejects_legacy_method_result_as_str() {
 fn rejects_class_call_on_unused_package() {
     rejects("my Any $v = Foo->new();\n", "a.tpr:1:", "package `Foo` is not used");
 }
+
+#[test]
+fn constructor_accepts_empty_literal_for_optional_arrayref_field() {
+    let point = "package Point;\n\nfield x: Int;\nfield tags: Optional[ArrayRef[Str]];\n\nsub new(Class $class, :Int $x, :Optional[ArrayRef[Str]] $tags) -> Point {\n    return bless({ x => $x, tags => $tags }, $class);\n}\n";
+    assert_ok(&build(&[("Point.tpm", point), ("a.tpr", "use Point;\nmy Point $p = Point->new(x => 1, tags => []);\n")], &["a.tpr"]));
+}

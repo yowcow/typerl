@@ -316,3 +316,24 @@ fn rejects_bad_types_in_my() {
     rejects("my Class $c = 1;\n", "a.tpr:1:", "Class is only allowed");
     rejects("my Void $v = 1;\n", "a.tpr:1:", "Void is only allowed as a return type");
 }
+
+// ---- literals under Optional / union expectations ----
+
+#[test]
+fn accepts_literals_under_optional_and_union_expectations() {
+    assert_ok(&script("my Optional[ArrayRef[Str]] $t = [];\n"));
+    assert_ok(&script("my Optional[ArrayRef[Int|Str]] $z = [1, \"a\"];\n"));
+    assert_ok(&script("my ArrayRef[Int|Str]|Str $z = [1, \"a\"];\n"));
+    assert_ok(&script("my Optional[HashRef[Str]] $h = {};\n"));
+    assert_ok(&script("sub f(Optional[ArrayRef[Str]] $t) -> Int {\n    return 1;\n}\nmy Int $n = f([]);\n"));
+}
+
+#[test]
+fn rejects_literal_element_mismatch_under_optional() {
+    rejects("my Optional[ArrayRef[Int]] $t = [\"a\"];\n", "a.tpr:1:", "type mismatch: expected Int, found Str");
+}
+
+#[test]
+fn rejects_empty_literal_for_ambiguous_union() {
+    rejects("my ArrayRef[Int]|ArrayRef[Str] $u = [];\n", "a.tpr:1:", "cannot infer the type of an empty literal");
+}

@@ -271,7 +271,20 @@ impl<'a> Checker<'a> {
 
     fn literal(&mut self, values: &[&Expr], expected: Option<&Type>, span: Span, array: bool) -> R<Type> {
         let wrap = |t: Type| if array { Type::ArrayRef(Box::new(t)) } else { Type::HashRef(Box::new(t)) };
-        let elem = match (expected, array) {
+        // Peel `Optional[...]`; in a union, use the unique container member of this literal's kind.
+        let mut ex = expected;
+        while let Some(Type::Optional(t)) = ex {
+            ex = Some(t);
+        }
+        let is_kind = |t: &Type| matches!((t, array), (Type::ArrayRef(_), true) | (Type::HashRef(_), false));
+        if let Some(Type::Union(ms)) = ex {
+            let mut it = ms.iter().filter(|m| is_kind(m));
+            ex = match (it.next(), it.next()) {
+                (Some(m), None) => Some(m),
+                _ => None,
+            };
+        }
+        let elem = match (ex, array) {
             (Some(Type::ArrayRef(t)), true) | (Some(Type::HashRef(t)), false) => Some((**t).clone()),
             _ => None,
         };
