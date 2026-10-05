@@ -55,6 +55,7 @@ pub struct File {
     pub package: Option<(String, Span)>,
     pub uses: Vec<Use>,
     pub items: Vec<Item>,
+    pub interface: Option<InterfaceBlock>,
 }
 
 #[derive(Debug)]
@@ -83,6 +84,20 @@ pub struct Sub {
     pub params: Vec<Param>,
     pub ret: Type,
     pub body: Vec<Stmt>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct IfaceMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub ret: Type,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct InterfaceBlock {
+    pub methods: Vec<IfaceMethod>,
     pub span: Span,
 }
 

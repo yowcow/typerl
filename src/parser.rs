@@ -194,7 +194,7 @@ impl Parser<'_> {
     // ---- file structure ----
 
     fn file(&mut self) -> R<File> {
-        let mut f = File { kind: self.kind, package: None, uses: vec![], items: vec![] };
+        let mut f = File { kind: self.kind, package: None, uses: vec![], items: vec![], interface: None };
         if self.kind == FileKind::Module {
             if !self.is_word("package") {
                 return self.err(self.span(), "a module must start with `package Name;`");
@@ -206,6 +206,19 @@ impl Parser<'_> {
         }
         while self.is_word("use") {
             f.uses.push(self.use_decl()?);
+        }
+        if self.is_word("interface") {
+            if self.kind != FileKind::Module {
+                return self.err(self.span(), "interface is only allowed in a module (.tpm)");
+            }
+            let span = self.advance();
+            self.expect_punct("{")?;
+            let mut methods = Vec::new();
+            while !self.is_punct("}") {
+                methods.push(self.iface_method()?);
+            }
+            self.advance();
+            f.interface = Some(InterfaceBlock { methods, span });
         }
         while *self.tok() != Tok::Eof {
             let span = self.span();
@@ -306,6 +319,39 @@ impl Parser<'_> {
         let ret = self.ty()?;
         let body = self.block()?;
         Ok(Sub { name, params, ret, body, span })
+    }
+
+    fn iface_method(&mut self) -> R<IfaceMethod> {
+        let span = self.span();
+        if !self.is_word("sub") {
+            return self.unexpected("`sub`");
+        }
+        self.advance();
+        let Some(name) = self.eat_ident() else {
+            return self.err(span, "anonymous subs and closures are not supported");
+        };
+        if name.contains("::") {
+            return self.err(span, "sub names must not be qualified");
+        }
+        if !self.eat_punct("(") {
+            return self.err(self.span(), "missing parameter list `(...)`");
+        }
+        let mut params = Vec::new();
+        if !self.is_punct(")") {
+            loop {
+                params.push(self.param()?);
+                if !self.eat_punct(",") {
+                    break;
+                }
+            }
+        }
+        self.expect_punct(")")?;
+        if !self.eat_punct("->") {
+            return self.err(self.span(), "missing return type annotation (`-> Type`)");
+        }
+        let ret = self.ty()?;
+        self.expect_punct(";")?;
+        Ok(IfaceMethod { name, params, ret, span })
     }
 
     fn param(&mut self) -> R<Param> {
