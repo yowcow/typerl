@@ -27,6 +27,15 @@ pub fn assignable(from: &Type, to: &Type) -> bool {
     }
 }
 
+fn signatures_equal(a: &SubSig, b: &SubSig) -> bool {
+    a.kind == SubKind::Method
+        && b.kind == SubKind::Method
+        && a.named == b.named
+        && a.ret == b.ret
+        && a.params.len() == b.params.len()
+        && a.params.iter().zip(&b.params).all(|(p, q)| p.named == q.named && p.ty == q.ty && (!p.named || p.name == q.name))
+}
+
 /// Element type a literal is checked against when the expected type fixes one: `Optional[...]` is
 /// peeled; in a union the literal's container member must be unique; a union containing Any gives
 /// no context (Any accepts the literal as inferred).
@@ -133,12 +142,62 @@ impl<'a> Checker<'a> {
         modules::check_type(ty, &self.known, false).map_err(|m| Diag::new(self.path, span, m))
     }
 
-    fn expect_assignable(&self, got: &Type, want: &Type, span: Span, ctx: &str) -> R<()> {
-        if assignable(got, want) {
+    fn expect_assignable(&mut self, got: &Type, want: &Type, span: Span, ctx: &str) -> R<()> {
+        if self.assignable_ctx(got, want)? {
             return Ok(());
         }
         let hint = if *got == Type::Any { " (narrow Any with to_int, to_str, to_bool or a legacy class annotation)" } else { "" };
         self.err(span, format!("{ctx}type mismatch: expected {want}, found {got}{hint}"))
+    }
+
+    fn satisfies(&mut self, class: &str, iface: &str) -> R<bool> {
+        let Some(iface_sig) = self.sig_of(iface)? else { return Ok(false) };
+        if !iface_sig.is_interface {
+            return Ok(false);
+        }
+        let Some(class_sig) = self.sig_of(class)? else { return Ok(false) };
+        if class_sig.is_interface {
+            return Ok(false);
+        }
+        for (name, want) in &iface_sig.iface {
+            match class_sig.subs.get(name) {
+                Some(got) if signatures_equal(got, want) => {}
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
+    fn assignable_ctx(&mut self, from: &Type, to: &Type) -> R<bool> {
+        use Type::*;
+        match (from, to) {
+            (Void, _) | (Class, _) | (_, Void) | (_, Class) => Ok(false),
+            (_, Any) => Ok(true),
+            (Any, _) => Ok(false),
+            (Union(fs), _) => {
+                for f in fs {
+                    if !self.assignable_ctx(f, to)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
+            (_, Union(ts)) => {
+                for t in ts {
+                    if self.assignable_ctx(from, t)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            (Optional(f), Optional(t)) => self.assignable_ctx(f, t),
+            (_, Optional(t)) => self.assignable_ctx(from, t),
+            (Optional(_), _) => Ok(false),
+            (ArrayRef(f), ArrayRef(t)) | (HashRef(f), HashRef(t)) => self.assignable_ctx(f, t),
+            (Object(a), Object(b)) if a == b => Ok(true),
+            (Object(a), Object(b)) => Ok(self.satisfies(a, b)?),
+            _ => Ok(from == to),
+        }
     }
 
     fn sub(&mut self, s: &'a Sub) -> R<()> {
@@ -449,6 +508,13 @@ impl<'a> Checker<'a> {
         // Receiver types come from checked declarations, so no `use` is required here.
         let m = self.sig_of(c)?;
         let Some(m) = m else { return self.legacy_call(args) };
+        if m.is_interface {
+            let Some(s) = m.iface.get(method) else {
+                return self.err(span, format!("{c} has no method `{method}`"));
+            };
+            self.args(s, &format!("{c}::{method}"), args, span)?;
+            return Ok(s.ret.clone());
+        }
         let Some(s) = m.subs.get(method) else { return self.err(span, format!("{c} has no method `{method}`")) };
         match s.kind {
             SubKind::Constructor => self.err(span, format!("constructor `{method}` must be called on the class: `{c}->{method}(...)`")),

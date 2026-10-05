@@ -314,7 +314,42 @@ fn rejects_bad_types_in_my() {
     rejects("my Void $v = 1;\n", "a.tpr:1:", "Void is only allowed as a return type");
 }
 
-// ---- literals under Optional / union expectations ----
+// ---- Task 3: structural subtyping ----
+
+const SHAPE: &str = "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n";
+const CIRCLE: &str = "package Circle;\nfield r: Int;\nsub new(Class $class, :Int $r) -> Circle {\n    return bless({ r => $r }, $class);\n}\nsub area(Circle $self) -> Int {\n    return $self->{r} * $self->{r};\n}\n";
+
+#[test]
+fn accepts_class_satisfying_interface() {
+    assert_ok(&with(
+        &[("Shape.tpm", SHAPE), ("Circle.tpm", CIRCLE)],
+        "use Shape;\nuse Circle;\nsub f(Shape $s) -> Int {\n    return $s->area;\n}\nmy Circle $c = Circle->new(r => 2);\nmy Int $a = f($c);\n",
+    ));
+}
+
+#[test]
+fn rejects_class_missing_interface_method() {
+    assert_err(
+        &with(
+            &[("Shape.tpm", SHAPE), ("Nope.tpm", "package Nope;\nfield r: Int;\nsub new(Class $class, :Int $r) -> Nope {\n    return bless({ r => $r }, $class);\n}\n")],
+            "use Shape;\nuse Nope;\nsub f(Shape $s) -> Int {\n    return 1;\n}\nmy Nope $n = Nope->new(r => 1);\nmy Int $a = f($n);\n",
+        ),
+        "a.tpr:",
+        "type mismatch",
+    );
+}
+
+#[test]
+fn rejects_interface_signature_mismatch() {
+    assert_err(
+        &with(
+            &[("Shape.tpm", SHAPE), ("Bad.tpm", "package Bad;\nfield r: Int;\nsub new(Class $class, :Int $r) -> Bad {\n    return bless({ r => $r }, $class);\n}\nsub area(Bad $self) -> Str {\n    return \"x\";\n}\n")],
+            "use Shape;\nuse Bad;\nsub f(Shape $s) -> Int {\n    return 1;\n}\nmy Bad $b = Bad->new(r => 1);\nmy Int $a = f($b);\n",
+        ),
+        "a.tpr:",
+        "type mismatch",
+    );
+}
 
 #[test]
 fn accepts_literals_under_optional_and_union_expectations() {
