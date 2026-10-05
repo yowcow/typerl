@@ -1,0 +1,11 @@
+package Point::Label;
+
+field text: Str;
+
+sub new(Class $class, :Str $text) -> Point::Label {
+    return bless({ text => $text }, $class);
+}
+
+sub text(Point::Label $self) -> Str {
+    return $self->{text};
+}

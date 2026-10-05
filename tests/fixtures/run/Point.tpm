@@ -1,0 +1,23 @@
+package Point;
+use Point::Label;
+
+field x: Int;
+field y: Int;
+field label: Optional[Str];
+field tag: Optional[Point::Label];
+
+sub new(Class $class, :Int $x, :Int $y, :Optional[Str] $label, :Optional[Point::Label] $tag) -> Point {
+    return bless({ x => $x, y => $y, label => $label, tag => $tag }, $class);
+}
+
+sub x(Point $self) -> Int {
+    return $self->{x};
+}
+
+sub y(Point $self) -> Int {
+    return $self->{y};
+}
+
+sub move(Point $self, :Int $x, :Int $y) -> Point {
+    return Point->new(x => $x, y => $y, label => $self->{label});
+}

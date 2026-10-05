@@ -1,0 +1,33 @@
+use Point;
+use Point::Label;
+use Math;
+use Legacy::Util;
+
+sub describe(Point::Label $l) -> Str {
+    my Str $t = $l->text();
+    return "label=$t";
+}
+
+my Point $p = Point->new(y => 2, x => 1);
+Legacy::Util::emit($p->x());
+my Point::Label $l = Point::Label->new(text => "origin");
+Legacy::Util::emit(describe($l));
+my Point $q = $p->move(x => 3, y => 4);
+Legacy::Util::emit(Math::add($q->x(), $q->y));
+my Any $raw = Legacy::Util::name();
+my Str $name = to_str($raw);
+Legacy::Util::emit("name=$name");
+my Legacy::Util $u = Legacy::Util->new();
+Legacy::Util::emit($u->name());
+my Point $r = Point->new(x => 0, y => 0, tag => $l);
+Legacy::Util::emit($r->x());
+foreach my Int $n ([1, 2, 3]) {
+    Legacy::Util::emit($n);
+}
+if (Math::add(1, 2) == 3) {
+    Legacy::Util::emit("three");
+} else {
+    die "math is broken";
+}
+my Int $num = to_int(Legacy::Util::number());
+Legacy::Util::emit($num + 1);
