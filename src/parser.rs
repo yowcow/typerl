@@ -4,7 +4,9 @@ use crate::lexer::{lex, Tok, Token};
 
 type R<T> = Result<T, Diag>;
 
-const WORD_OPS: &[&str] = &["ne", "lt", "gt", "le", "ge", "cmp", "and", "or", "not", "xor", "x", "isa"];
+const WORD_OPS: &[&str] = &[
+    "ne", "lt", "gt", "le", "ge", "cmp", "and", "or", "not", "xor", "x", "isa",
+];
 /// Max nesting of expressions, blocks and types; keeps the AST height (and every recursive walk over it) bounded.
 const MAX_DEPTH: usize = 64;
 /// Max operators in one left-associative chain (`a + b + ...`, `a->f->g...`).
@@ -15,15 +17,24 @@ const MODIFIERS: &[&str] = &["if", "unless", "while", "until", "for", "foreach"]
 fn banned(word: &str) -> Option<String> {
     Some(match word {
         "eval" | "evalbytes" => "eval is not supported (no string eval or runtime code)".into(),
-        "require" => "require is not supported; use a literal `use Name;` at the top of the file".into(),
-        "BEGIN" | "CHECK" | "INIT" | "END" | "UNITCHECK" => "BEGIN/CHECK/INIT/END blocks are not supported".into(),
+        "require" => {
+            "require is not supported; use a literal `use Name;` at the top of the file".into()
+        }
+        "BEGIN" | "CHECK" | "INIT" | "END" | "UNITCHECK" => {
+            "BEGIN/CHECK/INIT/END blocks are not supported".into()
+        }
         "tie" | "tied" | "untie" => "tie is not supported".into(),
-        "local" | "our" | "state" => format!("`{word}` declarations are not supported; use `my T $x`"),
+        "local" | "our" | "state" => {
+            format!("`{word}` declarations are not supported; use `my T $x`")
+        }
         "wantarray" => "wantarray is not supported (no list context)".into(),
         "undef" => "undef is not supported".into(),
-        "q" | "qq" | "qw" | "qr" | "qx" | "m" | "s" | "tr" | "y" => "quote-like operators are not supported".into(),
+        "q" | "qq" | "qw" | "qr" | "qx" | "m" | "s" | "tr" | "y" => {
+            "quote-like operators are not supported".into()
+        }
         "for" => "`for` is not supported; use `foreach my T $v (...)`".into(),
-        "unless" | "while" | "until" | "do" | "last" | "next" | "redo" | "goto" | "no" | "format" => {
+        "unless" | "while" | "until" | "do" | "last" | "next" | "redo" | "goto" | "no"
+        | "format" => {
             format!("`{word}` is not supported")
         }
         _ => return None,
@@ -42,7 +53,14 @@ fn describe(t: &Tok) -> String {
 
 pub fn parse(file: &str, src: &str, kind: FileKind) -> Result<File, Diag> {
     let toks = lex(file, src)?;
-    Parser { file, toks, pos: 0, kind, depth: 0 }.file()
+    Parser {
+        file,
+        toks,
+        pos: 0,
+        kind,
+        depth: 0,
+    }
+    .file()
 }
 
 struct Parser<'a> {
@@ -81,7 +99,10 @@ impl Parser<'_> {
     /// Runs `f` one nesting level deeper, failing past `MAX_DEPTH`.
     fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> R<T>) -> R<T> {
         if self.depth >= MAX_DEPTH {
-            return self.err(self.span(), format!("nesting is too deep (limit {MAX_DEPTH})"));
+            return self.err(
+                self.span(),
+                format!("nesting is too deep (limit {MAX_DEPTH})"),
+            );
         }
         self.depth += 1;
         let r = f(self);
@@ -93,7 +114,10 @@ impl Parser<'_> {
     fn chain(&self, n: &mut usize) -> R<()> {
         *n += 1;
         if *n > MAX_CHAIN {
-            return self.err(self.span(), format!("expression is too long (limit {MAX_CHAIN})"));
+            return self.err(
+                self.span(),
+                format!("expression is too long (limit {MAX_CHAIN})"),
+            );
         }
         Ok(())
     }
@@ -128,7 +152,10 @@ impl Parser<'_> {
                 return self.err(span, format!("operator `{w}` is not supported"));
             }
         }
-        self.err(span, format!("expected {what}, found {}", describe(self.tok())))
+        self.err(
+            span,
+            format!("expected {what}, found {}", describe(self.tok())),
+        )
     }
 
     fn expect_punct(&mut self, p: &str) -> R<Span> {
@@ -139,7 +166,9 @@ impl Parser<'_> {
     }
 
     fn eat_ident(&mut self) -> Option<String> {
-        let Tok::Ident(s) = self.tok() else { return None };
+        let Tok::Ident(s) = self.tok() else {
+            return None;
+        };
         let s = s.clone();
         self.advance();
         Some(s)
@@ -182,10 +211,13 @@ impl Parser<'_> {
     fn misplaced(&self, w: &str) -> Option<String> {
         match w {
             "use" => Some("use must appear at the top of the file".into()),
-            "package" => Some(match self.kind {
-                FileKind::Module => "only one package per module is allowed",
-                FileKind::Script => "package is not allowed in a script (.tpr)",
-            }.into()),
+            "package" => Some(
+                match self.kind {
+                    FileKind::Module => "only one package per module is allowed",
+                    FileKind::Script => "package is not allowed in a script (.tpr)",
+                }
+                .into(),
+            ),
             "field" => Some("field is only allowed at the top level of a module (.tpm)".into()),
             _ => banned(w),
         }
@@ -194,7 +226,13 @@ impl Parser<'_> {
     // ---- file structure ----
 
     fn file(&mut self) -> R<File> {
-        let mut f = File { kind: self.kind, package: None, uses: vec![], items: vec![], interface: None };
+        let mut f = File {
+            kind: self.kind,
+            package: None,
+            uses: vec![],
+            items: vec![],
+            interface: None,
+        };
         if self.kind == FileKind::Module {
             if !self.is_word("package") {
                 return self.err(self.span(), "a module must start with `package Name;`");
@@ -240,7 +278,10 @@ impl Parser<'_> {
                 }
             }
             if self.kind == FileKind::Module {
-                return self.err(span, "module top level may only contain field and sub declarations");
+                return self.err(
+                    span,
+                    "module top level may only contain field and sub declarations",
+                );
             }
             f.items.push(Item::Stmt(self.stmt()?));
         }
@@ -254,9 +295,17 @@ impl Parser<'_> {
         };
         match name.as_str() {
             "strict" | "warnings" => {
-                return self.err(span, "`use strict` and `use warnings` are emitted automatically; remove them")
+                return self.err(
+                    span,
+                    "`use strict` and `use warnings` are emitted automatically; remove them",
+                )
             }
-            "parent" | "base" => return self.err(span, "inheritance is not supported (`use parent` / `use base`)"),
+            "parent" | "base" => {
+                return self.err(
+                    span,
+                    "inheritance is not supported (`use parent` / `use base`)",
+                )
+            }
             _ => {}
         }
         if name.starts_with(|c: char| c.is_ascii_lowercase()) {
@@ -281,7 +330,10 @@ impl Parser<'_> {
         if self.is_punct(":") {
             let sp = self.advance();
             if self.is_word("reader") || self.is_word("writer") {
-                return self.err(sp, ":reader and :writer are not supported (no automatic accessors)");
+                return self.err(
+                    sp,
+                    ":reader and :writer are not supported (no automatic accessors)",
+                );
             }
             return self.err(sp, "field attributes are not supported");
         }
@@ -318,7 +370,13 @@ impl Parser<'_> {
         }
         let ret = self.ty()?;
         let body = self.block()?;
-        Ok(Sub { name, params, ret, body, span })
+        Ok(Sub {
+            name,
+            params,
+            ret,
+            body,
+            span,
+        })
     }
 
     fn iface_method(&mut self) -> R<IfaceMethod> {
@@ -351,7 +409,12 @@ impl Parser<'_> {
         }
         let ret = self.ty()?;
         self.expect_punct(";")?;
-        Ok(IfaceMethod { name, params, ret, span })
+        Ok(IfaceMethod {
+            name,
+            params,
+            ret,
+            span,
+        })
     }
 
     fn param(&mut self) -> R<Param> {
@@ -360,7 +423,12 @@ impl Parser<'_> {
         self.missing_type_if_var()?;
         let ty = self.ty()?;
         let name = self.var_name("a parameter variable")?;
-        Ok(Param { name, ty, named, span })
+        Ok(Param {
+            name,
+            ty,
+            named,
+            span,
+        })
     }
 
     fn ty(&mut self) -> R<Type> {
@@ -372,7 +440,11 @@ impl Parser<'_> {
         while self.eat_punct("|") {
             alts.push(self.ty_atom()?);
         }
-        Ok(if alts.len() == 1 { alts.pop().unwrap() } else { Type::Union(alts) })
+        Ok(if alts.len() == 1 {
+            alts.pop().unwrap()
+        } else {
+            Type::Union(alts)
+        })
     }
 
     fn ty_atom(&mut self) -> R<Type> {
@@ -392,7 +464,10 @@ impl Parser<'_> {
         }
         if matches!(name.as_str(), "ArrayRef" | "HashRef" | "Optional") {
             if !self.eat_punct("[") {
-                return self.err(span, format!("`{name}` requires a type parameter: `{name}[T]`"));
+                return self.err(
+                    span,
+                    format!("`{name}` requires a type parameter: `{name}[T]`"),
+                );
             }
             let inner = Box::new(self.ty()?);
             self.expect_punct("]")?;
@@ -439,7 +514,11 @@ impl Parser<'_> {
                 "foreach" => return self.foreach_stmt(),
                 "return" => {
                     self.advance();
-                    let value = if self.is_punct(";") { None } else { Some(self.expr()?) };
+                    let value = if self.is_punct(";") {
+                        None
+                    } else {
+                        Some(self.expr()?)
+                    };
                     self.expect_punct(";")?;
                     return Ok(Stmt::Return { value, span });
                 }
@@ -473,7 +552,10 @@ impl Parser<'_> {
             };
             return self.err(span, msg);
         }
-        if !matches!(e.kind, ExprKind::Call { .. } | ExprKind::ClassCall { .. } | ExprKind::MethodCall { .. }) {
+        if !matches!(
+            e.kind,
+            ExprKind::Call { .. } | ExprKind::ClassCall { .. } | ExprKind::MethodCall { .. }
+        ) {
             if !self.is_punct(";") {
                 return self.unexpected("`;`");
             }
@@ -497,7 +579,12 @@ impl Parser<'_> {
         self.expect_punct("=")?;
         let init = self.expr()?;
         self.expect_punct(";")?;
-        Ok(Stmt::My { ty, name, init, span })
+        Ok(Stmt::My {
+            ty,
+            name,
+            init,
+            span,
+        })
     }
 
     fn cond(&mut self) -> R<Expr> {
@@ -538,7 +625,13 @@ impl Parser<'_> {
         let var = self.var_name("a loop variable")?;
         let list = self.cond()?;
         let body = self.block()?;
-        Ok(Stmt::Foreach { ty, var, list, body, span })
+        Ok(Stmt::Foreach {
+            ty,
+            var,
+            list,
+            body,
+            span,
+        })
     }
 
     // ---- expressions ----
@@ -600,7 +693,10 @@ impl Parser<'_> {
         if self.is_punct("-") {
             let span = self.advance();
             let e = self.nested(Self::unary)?;
-            return Ok(Expr { kind: ExprKind::Neg(Box::new(e)), span });
+            return Ok(Expr {
+                kind: ExprKind::Neg(Box::new(e)),
+                span,
+            });
         }
         self.postfix()
     }
@@ -628,16 +724,33 @@ impl Parser<'_> {
             match self.tok().clone() {
                 Tok::Ident(method) => {
                     let args = self.method_args(&method)?;
-                    e = Expr { kind: ExprKind::MethodCall { recv: Box::new(e), method, args }, span };
+                    e = Expr {
+                        kind: ExprKind::MethodCall {
+                            recv: Box::new(e),
+                            method,
+                            args,
+                        },
+                        span,
+                    };
                 }
                 Tok::Punct("{") => {
                     self.advance();
                     let name = self.bare_key("field keys must be barewords")?;
                     self.expect_punct("}")?;
-                    e = Expr { kind: ExprKind::Field { recv: Box::new(e), name }, span };
+                    e = Expr {
+                        kind: ExprKind::Field {
+                            recv: Box::new(e),
+                            name,
+                        },
+                        span,
+                    };
                 }
-                Tok::Punct("[") => return self.err(arrow, "array element access (`->[...]`) is not supported"),
-                Tok::Punct("(") => return self.err(arrow, "calling code references is not supported"),
+                Tok::Punct("[") => {
+                    return self.err(arrow, "array element access (`->[...]`) is not supported")
+                }
+                Tok::Punct("(") => {
+                    return self.err(arrow, "calling code references is not supported")
+                }
                 Tok::Var(_) => return self.err(arrow, "dynamic method names are not supported"),
                 _ => return self.unexpected("a method name"),
             }
@@ -650,15 +763,24 @@ impl Parser<'_> {
         match self.tok().clone() {
             Tok::Int(n) => {
                 self.advance();
-                Ok(Expr { kind: ExprKind::Int(n), span })
+                Ok(Expr {
+                    kind: ExprKind::Int(n),
+                    span,
+                })
             }
             Tok::Str(s) => {
                 self.advance();
-                Ok(Expr { kind: ExprKind::Str(s), span })
+                Ok(Expr {
+                    kind: ExprKind::Str(s),
+                    span,
+                })
             }
             Tok::Var(v) => {
                 self.advance();
-                Ok(Expr { kind: ExprKind::Var(v), span })
+                Ok(Expr {
+                    kind: ExprKind::Var(v),
+                    span,
+                })
             }
             Tok::Punct("(") => {
                 self.advance();
@@ -672,12 +794,18 @@ impl Parser<'_> {
             Tok::Punct("[") => {
                 self.advance();
                 let items = self.comma_list("]", Self::expr)?;
-                Ok(Expr { kind: ExprKind::Array(items), span })
+                Ok(Expr {
+                    kind: ExprKind::Array(items),
+                    span,
+                })
             }
             Tok::Punct("{") => {
                 self.advance();
                 let pairs = self.pairs()?;
-                Ok(Expr { kind: ExprKind::Hash(pairs), span })
+                Ok(Expr {
+                    kind: ExprKind::Hash(pairs),
+                    span,
+                })
             }
             Tok::Punct("*") => self.err(span, "typeglobs are not supported"),
             Tok::Ident(w) => self.word(w, span),
@@ -723,15 +851,27 @@ impl Parser<'_> {
         self.advance();
         if self.is_punct("(") {
             let args = self.call_args()?;
-            return Ok(Expr { kind: ExprKind::Call { name: w, args }, span });
+            return Ok(Expr {
+                kind: ExprKind::Call { name: w, args },
+                span,
+            });
         }
         if self.eat_punct("->") {
             match self.tok().clone() {
                 Tok::Ident(m) => {
                     let args = self.method_args(&m)?;
-                    return Ok(Expr { kind: ExprKind::ClassCall { class: w, method: m, args }, span });
+                    return Ok(Expr {
+                        kind: ExprKind::ClassCall {
+                            class: w,
+                            method: m,
+                            args,
+                        },
+                        span,
+                    });
                 }
-                Tok::Var(_) => return self.err(self.span(), "dynamic method names are not supported"),
+                Tok::Var(_) => {
+                    return self.err(self.span(), "dynamic method names are not supported")
+                }
                 _ => return self.unexpected("a method name"),
             }
         }
@@ -748,44 +888,62 @@ impl Parser<'_> {
     fn call_args(&mut self) -> R<Args> {
         self.expect_punct("(")?;
         if self.at_pair() {
-            return self.comma_list(")", |p| {
-                let span = p.span();
-                if !p.at_pair() {
-                    return p.err(span, "cannot mix positional and named arguments");
-                }
-                let key = p.name("a key")?;
-                p.advance(); // =>
-                let value = p.expr()?;
-                Ok(Pair { key, value, span })
-            }).map(Args::Named);
+            return self
+                .comma_list(")", |p| {
+                    let span = p.span();
+                    if !p.at_pair() {
+                        return p.err(span, "cannot mix positional and named arguments");
+                    }
+                    let key = p.name("a key")?;
+                    p.advance(); // =>
+                    let value = p.expr()?;
+                    Ok(Pair { key, value, span })
+                })
+                .map(Args::Named);
         }
         self.comma_list(")", |p| {
             if p.at_pair() {
                 return p.err(p.span(), "cannot mix positional and named arguments");
             }
             p.expr()
-        }).map(Args::Positional)
+        })
+        .map(Args::Positional)
     }
 
     fn bless(&mut self, span: Span) -> R<Expr> {
         self.advance(); // bless
         self.expect_punct("(")?;
         if !self.eat_punct("{") {
-            return self.err(self.span(), "bless requires a hash literal as its first argument (re-blessing is not allowed)");
+            return self.err(
+                self.span(),
+                "bless requires a hash literal as its first argument (re-blessing is not allowed)",
+            );
         }
         let fields = self.pairs()?;
         if !self.eat_punct(",") {
-            return self.err(self.span(), "bless requires two arguments: `bless({...}, $class)`");
+            return self.err(
+                self.span(),
+                "bless requires two arguments: `bless({...}, $class)`",
+            );
         }
         let target = self.expr()?;
         self.expect_punct(")")?;
-        Ok(Expr { kind: ExprKind::Bless { fields, target: Box::new(target) }, span })
+        Ok(Expr {
+            kind: ExprKind::Bless {
+                fields,
+                target: Box::new(target),
+            },
+            span,
+        })
     }
 }
 
 fn bin(op: BinOp, l: Expr, r: Expr) -> Expr {
     let span = l.span;
-    Expr { kind: ExprKind::Binary(op, Box::new(l), Box::new(r)), span }
+    Expr {
+        kind: ExprKind::Binary(op, Box::new(l), Box::new(r)),
+        span,
+    }
 }
 
 #[cfg(test)]
@@ -822,12 +980,18 @@ mod tests {
         assert_eq!(init("my Int $v = 1 + 2 * 3 - 4;"), "(- (+ 1 (* 2 3)) 4)");
         assert_eq!(init("my Any $v = -1 * 2 . \"a\";"), "(. (* (neg 1) 2) str)");
         assert_eq!(init("my Bool $v = 1 + 2 == 3;"), "(== (+ 1 2) 3)");
-        assert_eq!(init("my Int $v = (1 + 2) * - -3;"), "(* (+ 1 2) (neg (neg 3)))");
+        assert_eq!(
+            init("my Int $v = (1 + 2) * - -3;"),
+            "(* (+ 1 2) (neg (neg 3)))"
+        );
     }
 
     #[test]
     fn parses_calls_and_chains() {
-        assert_eq!(init("my Any $v = Point->new(x => 1)->move(x => 2)->x;"), "(((Point->new)->move)->x)");
+        assert_eq!(
+            init("my Any $v = Point->new(x => 1)->move(x => 2)->x;"),
+            "(((Point->new)->move)->x)"
+        );
         assert_eq!(init("my Any $v = $self->{at}->x();"), "(($self->{at})->x)");
         assert_eq!(init("my Any $v = Math::add(1, 2);"), "(call Math::add)");
     }
@@ -835,20 +999,54 @@ mod tests {
     #[test]
     fn bounds_nesting_and_chains() {
         let e = |src: String| parse("t.tpr", &src, FileKind::Script).unwrap_err().msg;
-        assert_eq!(e(format!("my Int $v = {}1{};", "(".repeat(200), ")".repeat(200))), "nesting is too deep (limit 64)");
-        assert_eq!(e(format!("my Int $v = 1{};", " + 1".repeat(300))), "expression is too long (limit 256)");
-        assert!(parse("t.tpr", &format!("my Int $v = {}1{};", "(".repeat(63), ")".repeat(63)), FileKind::Script).is_ok());
+        assert_eq!(
+            e(format!(
+                "my Int $v = {}1{};",
+                "(".repeat(200),
+                ")".repeat(200)
+            )),
+            "nesting is too deep (limit 64)"
+        );
+        assert_eq!(
+            e(format!("my Int $v = 1{};", " + 1".repeat(300))),
+            "expression is too long (limit 256)"
+        );
+        assert!(parse(
+            "t.tpr",
+            &format!("my Int $v = {}1{};", "(".repeat(63), ")".repeat(63)),
+            FileKind::Script
+        )
+        .is_ok());
     }
 
     #[test]
     fn parses_args_shapes() {
-        let f = parse("t.tpr", "f(1, 2);\ng(a => 1, b => 2,);\nh();\n", FileKind::Script).unwrap();
+        let f = parse(
+            "t.tpr",
+            "f(1, 2);\ng(a => 1, b => 2,);\nh();\n",
+            FileKind::Script,
+        )
+        .unwrap();
         let shapes: Vec<String> = f
             .items
             .iter()
             .map(|i| match i {
-                Item::Stmt(Stmt::Expr(Expr { kind: ExprKind::Call { args: Args::Positional(v), .. }, .. })) => format!("pos{}", v.len()),
-                Item::Stmt(Stmt::Expr(Expr { kind: ExprKind::Call { args: Args::Named(v), .. }, .. })) => format!("named{}", v.len()),
+                Item::Stmt(Stmt::Expr(Expr {
+                    kind:
+                        ExprKind::Call {
+                            args: Args::Positional(v),
+                            ..
+                        },
+                    ..
+                })) => format!("pos{}", v.len()),
+                Item::Stmt(Stmt::Expr(Expr {
+                    kind:
+                        ExprKind::Call {
+                            args: Args::Named(v),
+                            ..
+                        },
+                    ..
+                })) => format!("named{}", v.len()),
                 other => panic!("{other:?}"),
             })
             .collect();
@@ -866,7 +1064,10 @@ mod tests {
         assert_eq!(f.package.as_ref().unwrap().0, "Point");
         assert_eq!(f.uses[0].name, "Foo");
         match &f.items[0] {
-            Item::Field(fl) => assert_eq!(fl.ty, Type::Optional(Box::new(Type::Union(vec![Type::Int, Type::Str])))),
+            Item::Field(fl) => assert_eq!(
+                fl.ty,
+                Type::Optional(Box::new(Type::Union(vec![Type::Int, Type::Str])))
+            ),
             other => panic!("{other:?}"),
         }
         match &f.items[1] {
@@ -874,14 +1075,33 @@ mod tests {
                 assert_eq!(s.params.len(), 2);
                 assert!(!s.params[0].named && s.params[1].named);
                 assert_eq!(s.ret, Type::Object("Point".into()));
-                assert!(matches!(&s.body[0], Stmt::Return { value: Some(Expr { kind: ExprKind::Bless { .. }, .. }), .. }));
+                assert!(matches!(
+                    &s.body[0],
+                    Stmt::Return {
+                        value: Some(Expr {
+                            kind: ExprKind::Bless { .. },
+                            ..
+                        }),
+                        ..
+                    }
+                ));
             }
             other => panic!("{other:?}"),
         }
     }
     #[test]
     fn allows_trailing_comma_and_requires_separator() {
-        assert!(parse("t.tpr", "my Any $a = [1, 2,];\nmy Any $h = { a => 1, };\nf(1, 2,);\n", FileKind::Script).is_ok());
-        assert_eq!(parse("t.tpr", "my Any $a = [1 2];", FileKind::Script).unwrap_err().msg, "expected `]`, found `2`");
+        assert!(parse(
+            "t.tpr",
+            "my Any $a = [1, 2,];\nmy Any $h = { a => 1, };\nf(1, 2,);\n",
+            FileKind::Script
+        )
+        .is_ok());
+        assert_eq!(
+            parse("t.tpr", "my Any $a = [1 2];", FileKind::Script)
+                .unwrap_err()
+                .msg,
+            "expected `]`, found `2`"
+        );
     }
 }

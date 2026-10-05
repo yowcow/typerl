@@ -65,7 +65,13 @@ sub move {
 
 #[test]
 fn public_function_has_positional_checks() {
-    let out = build(&[("Math.tpm", "package Math;\n\nsub add(Int $x, Int $y) -> Int {\n    return $x + $y;\n}\n")], &["Math.tpm"]);
+    let out = build(
+        &[(
+            "Math.tpm",
+            "package Math;\n\nsub add(Int $x, Int $y) -> Int {\n    return $x + $y;\n}\n",
+        )],
+        &["Math.tpm"],
+    );
     assert_ok(&out);
     assert_eq!(
         read_output(&out, "Math.tpm"),
@@ -208,7 +214,8 @@ sub greet {
 
 #[test]
 fn control_flow_and_literals() {
-    let out = script(r#"use Legacy::Util;
+    let out = script(
+        r#"use Legacy::Util;
 sub sign(Int $n) -> Str {
     if ($n == 0) {
         return 'zero';
@@ -227,7 +234,8 @@ show([1, 2]);
 my HashRef[Int] $h = { a => 1, b => 2 };
 my ArrayRef[Int] $e = [];
 my HashRef[Int] $eh = {};
-"#);
+"#,
+    );
     assert_ok(&out);
     assert_eq!(
         read_output(&out, "a.tpr"),
@@ -286,7 +294,10 @@ my $y = -(f(3));
 #[test]
 fn interface_module_emits_package_only() {
     let out = build(
-        &[("Shape.tpm", "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n")],
+        &[(
+            "Shape.tpm",
+            "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n",
+        )],
         &["Shape.tpm"],
     );
     assert_ok(&out);
@@ -300,7 +311,10 @@ fn interface_module_emits_package_only() {
 fn interface_param_emits_has_methods_check() {
     let out = build(
         &[
-            ("Shape.tpm", "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n"),
+            (
+                "Shape.tpm",
+                "package Shape;\ninterface {\n    sub area(Shape $self) -> Int;\n}\n",
+            ),
             (
                 "Use.tpm",
                 "package Use;\nuse Shape;\nsub f(Shape $s) -> Int {\n    return $s->area;\n}\n",
@@ -310,8 +324,14 @@ fn interface_param_emits_has_methods_check() {
     );
     assert_ok(&out);
     let text = read_output(&out, "Use.tpm");
-    assert!(text.contains("use Types::Standard qw(HasMethods);"), "{text}");
-    assert!(text.contains("(HasMethods[\"area\"])->assert_valid($s);"), "{text}");
+    assert!(
+        text.contains("use Types::Standard qw(HasMethods);"),
+        "{text}"
+    );
+    assert!(
+        text.contains("(HasMethods[\"area\"])->assert_valid($s);"),
+        "{text}"
+    );
 }
 
 #[test]

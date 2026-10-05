@@ -31,37 +31,290 @@ pub struct ModuleSig {
 }
 
 pub const RESERVED: &[&str] = &[
-    "Int", "Str", "Bool", "Any", "Void", "Class", "ArrayRef", "HashRef", "Optional", "Maybe", "InstanceOf", "to_int",
-    "to_str", "to_bool", "BEGIN", "CHECK", "INIT", "END", "UNITCHECK", "AUTOLOAD", "DESTROY", "import", "unimport",
+    "Int",
+    "Str",
+    "Bool",
+    "Any",
+    "Void",
+    "Class",
+    "ArrayRef",
+    "HashRef",
+    "Optional",
+    "Maybe",
+    "InstanceOf",
+    "to_int",
+    "to_str",
+    "to_bool",
+    "BEGIN",
+    "CHECK",
+    "INIT",
+    "END",
+    "UNITCHECK",
+    "AUTOLOAD",
+    "DESTROY",
+    "import",
+    "unimport",
 ];
 
 /// Perl 5.38 built-in function names and keywords (from B::Keywords); an unqualified call
 /// with one of these names would not reach a user sub.
 pub const PERL_BUILTINS: &[&str] = &[
-    "__CLASS__", "__DATA__", "__END__", "__FILE__", "__LINE__", "__PACKAGE__", "__SUB__",
-    "abs", "accept", "alarm", "and", "atan2", "bind", "binmode", "bless", "break", "caller", "catch", "chdir", "chmod",
-    "chomp", "chop", "chown", "chr", "chroot", "class", "close", "closedir", "cmp", "connect", "continue", "cos",
-    "crypt", "dbmclose", "dbmopen", "default", "defer", "defined", "delete", "die", "do", "dump", "each", "else",
-    "elsif", "endgrent", "endhostent", "endnetent", "endprotoent", "endpwent", "endservent", "eof", "eq", "eval",
-    "evalbytes", "exec", "exists", "exit", "exp", "fc", "fcntl", "field", "fileno", "finally", "flock", "for",
-    "foreach", "fork", "format", "formline", "ge", "getc", "getgrent", "getgrgid", "getgrnam", "gethostbyaddr",
-    "gethostbyname", "gethostent", "getlogin", "getnetbyaddr", "getnetbyname", "getnetent", "getpeername",
-    "getpgrp", "getppid", "getpriority", "getprotobyname", "getprotobynumber", "getprotoent", "getpwent",
-    "getpwnam", "getpwuid", "getservbyname", "getservbyport", "getservent", "getsockname", "getsockopt", "given",
-    "glob", "gmtime", "goto", "grep", "gt", "hex", "if", "index", "int", "ioctl", "isa", "join", "keys", "kill",
-    "last", "lc", "lcfirst", "le", "length", "link", "listen", "local", "localtime", "lock", "log", "lstat", "lt",
-    "m", "map", "method", "mkdir", "msgctl", "msgget", "msgrcv", "msgsnd", "my", "ne", "next", "no", "not", "oct",
-    "open", "opendir", "or", "ord", "our", "pack", "package", "pipe", "pop", "pos", "print", "printf", "prototype",
-    "push", "q", "qq", "qr", "quotemeta", "qw", "qx", "rand", "read", "readdir", "readline", "readlink",
-    "readpipe", "recv", "redo", "ref", "rename", "require", "reset", "return", "reverse", "rewinddir", "rindex",
-    "rmdir", "s", "say", "scalar", "seek", "seekdir", "select", "semctl", "semget", "semop", "send", "setgrent",
-    "sethostent", "setnetent", "setpgrp", "setpriority", "setprotoent", "setpwent", "setservent", "setsockopt",
-    "shift", "shmctl", "shmget", "shmread", "shmwrite", "shutdown", "sin", "sleep", "socket", "socketpair", "sort",
-    "splice", "split", "sprintf", "sqrt", "srand", "stat", "state", "study", "sub", "substr", "symlink",
-    "syscall", "sysopen", "sysread", "sysseek", "system", "syswrite", "tell", "telldir", "tie", "tied", "time",
-    "times", "tr", "truncate", "try", "uc", "ucfirst", "umask", "undef", "unless", "unlink", "unpack", "unshift",
-    "untie", "until", "use", "utime", "values", "vec", "wait", "waitpid", "wantarray", "warn", "when", "while",
-    "write", "x", "xor", "y",
+    "__CLASS__",
+    "__DATA__",
+    "__END__",
+    "__FILE__",
+    "__LINE__",
+    "__PACKAGE__",
+    "__SUB__",
+    "abs",
+    "accept",
+    "alarm",
+    "and",
+    "atan2",
+    "bind",
+    "binmode",
+    "bless",
+    "break",
+    "caller",
+    "catch",
+    "chdir",
+    "chmod",
+    "chomp",
+    "chop",
+    "chown",
+    "chr",
+    "chroot",
+    "class",
+    "close",
+    "closedir",
+    "cmp",
+    "connect",
+    "continue",
+    "cos",
+    "crypt",
+    "dbmclose",
+    "dbmopen",
+    "default",
+    "defer",
+    "defined",
+    "delete",
+    "die",
+    "do",
+    "dump",
+    "each",
+    "else",
+    "elsif",
+    "endgrent",
+    "endhostent",
+    "endnetent",
+    "endprotoent",
+    "endpwent",
+    "endservent",
+    "eof",
+    "eq",
+    "eval",
+    "evalbytes",
+    "exec",
+    "exists",
+    "exit",
+    "exp",
+    "fc",
+    "fcntl",
+    "field",
+    "fileno",
+    "finally",
+    "flock",
+    "for",
+    "foreach",
+    "fork",
+    "format",
+    "formline",
+    "ge",
+    "getc",
+    "getgrent",
+    "getgrgid",
+    "getgrnam",
+    "gethostbyaddr",
+    "gethostbyname",
+    "gethostent",
+    "getlogin",
+    "getnetbyaddr",
+    "getnetbyname",
+    "getnetent",
+    "getpeername",
+    "getpgrp",
+    "getppid",
+    "getpriority",
+    "getprotobyname",
+    "getprotobynumber",
+    "getprotoent",
+    "getpwent",
+    "getpwnam",
+    "getpwuid",
+    "getservbyname",
+    "getservbyport",
+    "getservent",
+    "getsockname",
+    "getsockopt",
+    "given",
+    "glob",
+    "gmtime",
+    "goto",
+    "grep",
+    "gt",
+    "hex",
+    "if",
+    "index",
+    "int",
+    "ioctl",
+    "isa",
+    "join",
+    "keys",
+    "kill",
+    "last",
+    "lc",
+    "lcfirst",
+    "le",
+    "length",
+    "link",
+    "listen",
+    "local",
+    "localtime",
+    "lock",
+    "log",
+    "lstat",
+    "lt",
+    "m",
+    "map",
+    "method",
+    "mkdir",
+    "msgctl",
+    "msgget",
+    "msgrcv",
+    "msgsnd",
+    "my",
+    "ne",
+    "next",
+    "no",
+    "not",
+    "oct",
+    "open",
+    "opendir",
+    "or",
+    "ord",
+    "our",
+    "pack",
+    "package",
+    "pipe",
+    "pop",
+    "pos",
+    "print",
+    "printf",
+    "prototype",
+    "push",
+    "q",
+    "qq",
+    "qr",
+    "quotemeta",
+    "qw",
+    "qx",
+    "rand",
+    "read",
+    "readdir",
+    "readline",
+    "readlink",
+    "readpipe",
+    "recv",
+    "redo",
+    "ref",
+    "rename",
+    "require",
+    "reset",
+    "return",
+    "reverse",
+    "rewinddir",
+    "rindex",
+    "rmdir",
+    "s",
+    "say",
+    "scalar",
+    "seek",
+    "seekdir",
+    "select",
+    "semctl",
+    "semget",
+    "semop",
+    "send",
+    "setgrent",
+    "sethostent",
+    "setnetent",
+    "setpgrp",
+    "setpriority",
+    "setprotoent",
+    "setpwent",
+    "setservent",
+    "setsockopt",
+    "shift",
+    "shmctl",
+    "shmget",
+    "shmread",
+    "shmwrite",
+    "shutdown",
+    "sin",
+    "sleep",
+    "socket",
+    "socketpair",
+    "sort",
+    "splice",
+    "split",
+    "sprintf",
+    "sqrt",
+    "srand",
+    "stat",
+    "state",
+    "study",
+    "sub",
+    "substr",
+    "symlink",
+    "syscall",
+    "sysopen",
+    "sysread",
+    "sysseek",
+    "system",
+    "syswrite",
+    "tell",
+    "telldir",
+    "tie",
+    "tied",
+    "time",
+    "times",
+    "tr",
+    "truncate",
+    "try",
+    "uc",
+    "ucfirst",
+    "umask",
+    "undef",
+    "unless",
+    "unlink",
+    "unpack",
+    "unshift",
+    "untie",
+    "until",
+    "use",
+    "utime",
+    "values",
+    "vec",
+    "wait",
+    "waitpid",
+    "wantarray",
+    "warn",
+    "when",
+    "while",
+    "write",
+    "x",
+    "xor",
+    "y",
 ];
 
 pub fn expected_package(path: &str) -> Result<String, String> {
@@ -86,7 +339,11 @@ pub fn check_package(file: &File, path: &str) -> Result<(), Diag> {
     };
     let expected = expected_package(path).map_err(|m| Diag::new(path, *span, m))?;
     if *name != expected {
-        return Err(Diag::new(path, *span, format!("package `{name}` does not match the file name (expected `{expected}`)")));
+        return Err(Diag::new(
+            path,
+            *span,
+            format!("package `{name}` does not match the file name (expected `{expected}`)"),
+        ));
     }
     Ok(())
 }
@@ -96,7 +353,9 @@ pub fn check_type(ty: &Type, known: &HashSet<String>, allow_void: bool) -> Resul
     match ty {
         Type::Void if allow_void => Ok(()),
         Type::Void => Err("Void is only allowed as a return type".into()),
-        Type::Class => Err("Class is only allowed as the type of a constructor's first parameter `$class`".into()),
+        Type::Class => Err(
+            "Class is only allowed as the type of a constructor's first parameter `$class`".into(),
+        ),
         Type::Object(n) if !known.contains(n) => Err(format!("unknown type `{n}`")),
         Type::ArrayRef(t) | Type::HashRef(t) | Type::Optional(t) => check_type(t, known, false),
         Type::Union(ts) => ts.iter().try_for_each(|t| check_type(t, known, false)),
@@ -113,20 +372,30 @@ pub fn known_names(file: &File) -> HashSet<String> {
 }
 
 pub fn module_sig(file: &File, path: &str) -> Result<ModuleSig, Diag> {
-    let package = file.package.as_ref().map_or_else(|| "main".to_string(), |p| p.0.clone());
+    let package = file
+        .package
+        .as_ref()
+        .map_or_else(|| "main".to_string(), |p| p.0.clone());
     let known = known_names(file);
     let is_interface = file.interface.is_some();
     if file.kind == FileKind::Module && is_interface {
         if let Some(item) = file.items.first() {
             let (span, msg) = match item {
-                Item::Field(f) => (f.span, "interface modules cannot declare fields".to_string()),
+                Item::Field(f) => (
+                    f.span,
+                    "interface modules cannot declare fields".to_string(),
+                ),
                 Item::Sub(s) => (
                     s.span,
-                    "interface modules cannot define sub bodies (move them to a class module)".to_string(),
+                    "interface modules cannot define sub bodies (move them to a class module)"
+                        .to_string(),
                 ),
                 Item::Stmt(s) => (
-                    stmt_span(s).unwrap_or_else(|| file.interface.as_ref().expect("interface checked").span),
-                    "interface modules cannot define sub bodies (move them to a class module)".to_string(),
+                    stmt_span(s).unwrap_or_else(|| {
+                        file.interface.as_ref().expect("interface checked").span
+                    }),
+                    "interface modules cannot define sub bodies (move them to a class module)"
+                        .to_string(),
                 ),
             };
             return Err(Diag::new(path, span, msg));
@@ -135,34 +404,64 @@ pub fn module_sig(file: &File, path: &str) -> Result<ModuleSig, Diag> {
     let mut iface = HashMap::new();
     if let Some(block) = file.interface.as_ref() {
         if block.methods.is_empty() {
-            return Err(Diag::new(path, block.span, "interface must declare at least one method"));
+            return Err(Diag::new(
+                path,
+                block.span,
+                "interface must declare at least one method",
+            ));
         }
         for m in &block.methods {
-            let tmp = Sub { name: m.name.clone(), params: m.params.clone(), ret: m.ret.clone(), body: vec![], span: m.span };
-            let ss = sub_sig(&tmp, file.kind, &package, &known).map_err(|(sp, msg)| Diag::new(path, sp, msg))?;
+            let tmp = Sub {
+                name: m.name.clone(),
+                params: m.params.clone(),
+                ret: m.ret.clone(),
+                body: vec![],
+                span: m.span,
+            };
+            let ss = sub_sig(&tmp, file.kind, &package, &known)
+                .map_err(|(sp, msg)| Diag::new(path, sp, msg))?;
             if ss.kind != SubKind::Method {
                 return Err(Diag::new(path, m.span, "interface methods must be methods"));
             }
             if iface.contains_key(&m.name) {
-                return Err(Diag::new(path, m.span, format!("duplicate method `{}` in interface", m.name)));
+                return Err(Diag::new(
+                    path,
+                    m.span,
+                    format!("duplicate method `{}` in interface", m.name),
+                ));
             }
             iface.insert(m.name.clone(), ss);
         }
     }
-    let mut sig = ModuleSig { package: package.clone(), subs: HashMap::new(), fields: Vec::new(), is_interface, iface };
+    let mut sig = ModuleSig {
+        package: package.clone(),
+        subs: HashMap::new(),
+        fields: Vec::new(),
+        is_interface,
+        iface,
+    };
     for item in &file.items {
         match item {
             Item::Field(f) => {
                 if sig.fields.iter().any(|(n, _)| *n == f.name) {
-                    return Err(Diag::new(path, f.span, format!("duplicate field `{}`", f.name)));
+                    return Err(Diag::new(
+                        path,
+                        f.span,
+                        format!("duplicate field `{}`", f.name),
+                    ));
                 }
                 check_type(&f.ty, &known, false).map_err(|m| Diag::new(path, f.span, m))?;
                 sig.fields.push((f.name.clone(), f.ty.clone()));
             }
             Item::Sub(s) => {
-                let ss = sub_sig(s, file.kind, &package, &known).map_err(|(sp, m)| Diag::new(path, sp, m))?;
+                let ss = sub_sig(s, file.kind, &package, &known)
+                    .map_err(|(sp, m)| Diag::new(path, sp, m))?;
                 if sig.subs.contains_key(&s.name) {
-                    return Err(Diag::new(path, s.span, format!("duplicate sub `{}`", s.name)));
+                    return Err(Diag::new(
+                        path,
+                        s.span,
+                        format!("duplicate sub `{}`", s.name),
+                    ));
                 }
                 sig.subs.insert(s.name.clone(), ss);
             }
@@ -177,13 +476,20 @@ pub fn module_sig(file: &File, path: &str) -> Result<ModuleSig, Diag> {
 /// interface-shape check's `Item::Stmt` arm.
 fn stmt_span(s: &Stmt) -> Option<Span> {
     match s {
-        Stmt::My { span, .. } | Stmt::Foreach { span, .. } | Stmt::Return { span, .. } => Some(*span),
+        Stmt::My { span, .. } | Stmt::Foreach { span, .. } | Stmt::Return { span, .. } => {
+            Some(*span)
+        }
         Stmt::Expr(e) => Some(e.span),
         Stmt::If { .. } | Stmt::Die { .. } => None,
     }
 }
 
-fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> Result<SubSig, (Span, String)> {
+fn sub_sig(
+    s: &Sub,
+    kind: FileKind,
+    package: &str,
+    known: &HashSet<String>,
+) -> Result<SubSig, (Span, String)> {
     if RESERVED.contains(&s.name.as_str()) {
         return Err((s.span, format!("`{}` is a reserved name", s.name)));
     }
@@ -196,21 +502,39 @@ fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> R
     if sub_kind != SubKind::Function {
         let inv = params.remove(0);
         if kind == FileKind::Script {
-            return Err((inv.span, "constructors and methods are only allowed in modules (.tpm)".into()));
+            return Err((
+                inv.span,
+                "constructors and methods are only allowed in modules (.tpm)".into(),
+            ));
         }
         if inv.named {
-            return Err((inv.span, format!("invocant `${}` must be positional", inv.name)));
+            return Err((
+                inv.span,
+                format!("invocant `${}` must be positional", inv.name),
+            ));
         }
         let own = Type::Object(package.to_string());
         if sub_kind == SubKind::Constructor && inv.ty != Type::Class {
-            return Err((inv.span, "constructor invocant `$class` must have type Class".into()));
+            return Err((
+                inv.span,
+                "constructor invocant `$class` must have type Class".into(),
+            ));
         }
         if sub_kind == SubKind::Method && inv.ty != own {
-            return Err((inv.span, format!("method invocant `$self` must have type {package}")));
+            return Err((
+                inv.span,
+                format!("method invocant `$self` must have type {package}"),
+            ));
         }
     }
     if sub_kind == SubKind::Function && PERL_BUILTINS.contains(&s.name.as_str()) {
-        return Err((s.span, format!("`{}` is a Perl built-in; a function with this name cannot be called safely", s.name)));
+        return Err((
+            s.span,
+            format!(
+                "`{}` is a Perl built-in; a function with this name cannot be called safely",
+                s.name
+            ),
+        ));
     }
     let mut seen = HashSet::new();
     for p in &params {
@@ -224,18 +548,29 @@ fn sub_sig(s: &Sub, kind: FileKind, package: &str, known: &HashSet<String>) -> R
     }
     let named = params.first().is_some_and(|p| p.named);
     if params.iter().any(|p| p.named != named) {
-        return Err((s.span, "positional and named parameters cannot be mixed".into()));
+        return Err((
+            s.span,
+            "positional and named parameters cannot be mixed".into(),
+        ));
     }
     if sub_kind == SubKind::Constructor {
         if !params.is_empty() && !named {
-            return Err((s.span, "constructor parameters after `$class` must be named (`:Type $name`)".into()));
+            return Err((
+                s.span,
+                "constructor parameters after `$class` must be named (`:Type $name`)".into(),
+            ));
         }
         if s.ret != Type::Object(package.to_string()) {
             return Err((s.span, format!("constructor must return {package}")));
         }
     }
     check_type(&s.ret, known, true).map_err(|m| (s.span, m))?;
-    Ok(SubSig { kind: sub_kind, params, named, ret: s.ret.clone() })
+    Ok(SubSig {
+        kind: sub_kind,
+        params,
+        named,
+        ret: s.ret.clone(),
+    })
 }
 
 /// Signatures of `use`d typed modules, read from `<cwd>/<Pkg path>.tpm`.
@@ -287,21 +622,30 @@ mod tests {
     #[test]
     fn expected_package_from_path() {
         assert_eq!(expected_package("Point.tpm").unwrap(), "Point");
-        assert_eq!(expected_package("./Point/Label.tpm").unwrap(), "Point::Label");
+        assert_eq!(
+            expected_package("./Point/Label.tpm").unwrap(),
+            "Point::Label"
+        );
         assert!(expected_package("/abs/Point.tpm").is_err());
         assert!(expected_package("../x/Point.tpm").is_err());
     }
 
     #[test]
     fn module_path_from_package() {
-        assert_eq!(module_path("Point::Label"), PathBuf::from("Point/Label.tpm"));
+        assert_eq!(
+            module_path("Point::Label"),
+            PathBuf::from("Point/Label.tpm")
+        );
     }
 
     #[test]
     fn check_type_rules() {
         let known: HashSet<String> = ["Point".to_string()].into();
         assert!(check_type(&Type::Object("Point".into()), &known, false).is_ok());
-        assert_eq!(check_type(&Type::Object("Foo".into()), &known, false).unwrap_err(), "unknown type `Foo`");
+        assert_eq!(
+            check_type(&Type::Object("Foo".into()), &known, false).unwrap_err(),
+            "unknown type `Foo`"
+        );
         assert!(check_type(&Type::Void, &known, true).is_ok());
         assert!(check_type(&Type::ArrayRef(Box::new(Type::Void)), &known, true).is_err());
         assert!(check_type(&Type::Class, &known, false).is_err());
